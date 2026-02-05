@@ -71,7 +71,7 @@ export default function App() {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/jobs');
+        const response = await fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/jobs');
         const data = await response.json();
         setJobs(data);
       } catch (error) {
@@ -84,7 +84,7 @@ export default function App() {
   // 2. Add Job (Update state AND Database)
   const addJob = async (newJob) => {
     try {
-      const response = await fetch('http://localhost:5000/api/admin/jobs', {
+      const response = await fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newJob),
@@ -102,7 +102,7 @@ export default function App() {
   // 3. Delete Job (Update state AND Database)
   const deleteJob = async (jobId) => {
     try {
-      await fetch(`http://localhost:5000/api/admin/jobs/${jobId}`, {
+      await fetch(`https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/jobs/${jobId}`, {
         method: 'DELETE',
       });
       setJobs(jobs.filter(job => job.id !== jobId));

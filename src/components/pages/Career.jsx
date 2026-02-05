@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Briefcase, ArrowRight, X, Send, User, Mail, Phone, FileText } from 'lucide-react';
-import toast, { Toaster } from 'react-hot-toast'; // 1. Import Toast components
+import toast, { Toaster } from 'react-hot-toast';
 
 export function CareersPage({ jobs = [] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -17,45 +17,41 @@ export function CareersPage({ jobs = [] }) {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Create a loading toast
     const loadingToast = toast.loading("Uploading resume and sending application...");
-
-    const data = new FormData();
-    data.append('job_title', selectedJob.title);
-    data.append('fullName', e.target[0].value);
-    data.append('email', e.target[1].value);
-    data.append('phone', e.target[2].value);
-    data.append('message', e.target[3].value);
-    data.append('resume', e.target[4].files[0]);
+    
+    // Use FormData(e.currentTarget) to capture named inputs safely
+    const data = new FormData(e.currentTarget);
+    if (selectedJob) {
+        data.append('job_title', selectedJob.title);
+    }
 
     try {
-      const res = await fetch('http://localhost:5000/api/jobs/apply', {
+      const res = await fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/jobs/apply', {
         method: 'POST',
-        body: data, 
+        body: data, // Fetch automatically sets content-type to multipart/form-data
       });
 
       if (res.ok) {
-        // 2. Success Toast
-        toast.success("Success! Check your email for confirmation.", { id: loadingToast });
+        toast.success("Success! Application submitted.", { id: loadingToast });
         setIsModalOpen(false);
         e.target.reset(); 
       } else {
         const errorData = await res.json();
-        // 3. Error Toast from Server
         toast.error(`Error: ${errorData.error || "Failed to submit"}`, { id: loadingToast });
       }
     } catch (error) {
       console.error("Submission error:", error);
-      // 4. Connection Error Toast
       toast.error("Could not connect to the server.", { id: loadingToast });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Ensure jobs is an array to prevent .map() crash
+  const jobsList = Array.isArray(jobs) ? jobs : [];
+
   return (
     <div className="pt-32 pb-20 bg-gray-50 min-h-screen relative">
-      {/* 5. Add Toaster Container here */}
       <Toaster position="top-center" reverseOrder={false} />
 
       <div className="max-w-7xl mx-auto px-6">
@@ -66,15 +62,15 @@ export function CareersPage({ jobs = [] }) {
           <p className="text-gray-600">Join our team and make an impact.</p>
         </div>
 
-        {/* Job Grid */}
-        {!jobs || jobs.length === 0 ? (
+        {/* Job Grid with Safeguard */}
+        {jobsList.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-3xl border shadow-sm">
             <Briefcase className="mx-auto text-gray-300 mb-4" size={48} />
             <p className="text-gray-500 font-medium">No current openings. Please check back later!</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {jobs.map((job) => (
+            {jobsList.map((job) => (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -109,9 +105,7 @@ export function CareersPage({ jobs = [] }) {
         {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
@@ -133,25 +127,26 @@ export function CareersPage({ jobs = [] }) {
                 <h2 className="text-2xl font-bold">Applying for: {selectedJob?.title}</h2>
               </div>
 
+              {/* Form with name attributes for FormData to work */}
               <form className="p-8 space-y-4" onSubmit={handleSubmit}>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input type="text" placeholder="Full Name" className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-red-500 transition-all" required />
+                  <input name="fullName" type="text" placeholder="Full Name" className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-red-500 transition-all" required />
                 </div>
 
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input type="email" placeholder="Email Address" className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-red-500 transition-all" required />
+                  <input name="email" type="email" placeholder="Email Address" className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-red-500 transition-all" required />
                 </div>
 
                 <div className="relative">
                   <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input type="tel" placeholder="Phone Number" className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-red-500 transition-all" required />
+                  <input name="phone" type="tel" placeholder="Phone Number" className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-red-500 transition-all" required />
                 </div>
 
                 <div className="relative">
                   <FileText className="absolute left-4 top-4 text-gray-400" size={18} />
-                  <textarea rows="4" placeholder="Briefly tell us why you're a good fit..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-red-500 transition-all resize-none"></textarea>
+                  <textarea name="message" rows="4" placeholder="Briefly tell us why you're a good fit..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-red-500 transition-all resize-none"></textarea>
                 </div>
 
                 <div className="pt-2">
@@ -159,6 +154,7 @@ export function CareersPage({ jobs = [] }) {
                     Upload Resume (PDF Only)
                   </label>
                   <input 
+                    name="resume"
                     type="file" 
                     accept=".pdf"
                     required

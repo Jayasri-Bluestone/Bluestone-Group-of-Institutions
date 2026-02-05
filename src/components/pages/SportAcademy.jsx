@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trophy, Users, Target, Activity, Flame, ShieldCheck, Heart } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
+import Sports from "../../assets/sport1.JPG";
 
 export function SportAcademy() { // Removed { onBack } prop
   // 2. Initialize the hook
@@ -90,7 +91,7 @@ export function SportAcademy() { // Removed { onBack } prop
             >
               <div className="absolute inset-0 bg-blue-600 rounded-3xl rotate-3 scale-105 opacity-10"></div>
               <img
-                src="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=800"
+                src={Sports}
                 alt="Elite Athlete Training"
                 className="relative rounded-3xl shadow-2xl z-10 w-full h-[500px] object-cover"
               />
@@ -111,7 +112,7 @@ export function SportAcademy() { // Removed { onBack } prop
             <motion.div
               key={index}
               whileHover={{ y: -10 }}
-              className="group bg-white border border-slate-100 p-10 rounded-3xl shadow-sm hover:shadow-2xl hover:shadow-blue-900/5 transition-all"
+              className="group bg-white border border-red-600  border-4 p-10 rounded-3xl shadow-sm hover:shadow-2xl hover:shadow-blue-900/5 transition-all"
             >
               <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${item.color} flex items-center justify-center mb-8 shadow-lg group-hover:scale-110 transition-transform`}>
                 <item.icon className="text-white" size={32} />
@@ -120,9 +121,9 @@ export function SportAcademy() { // Removed { onBack } prop
               <p className="text-slate-500 leading-relaxed mb-6">
                 {item.desc}
               </p>
-              <div className="flex items-center text-blue-600 font-bold cursor-pointer group-hover:gap-2 transition-all">
+              {/* <div className="flex items-center text-blue-600 font-bold cursor-pointer group-hover:gap-2 transition-all">
                 Learn More <span>→</span>
-              </div>
+              </div> */}
             </motion.div>
           ))}
         </div>

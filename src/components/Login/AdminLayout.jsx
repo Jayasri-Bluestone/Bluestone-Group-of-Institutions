@@ -11,7 +11,7 @@ export function AdminLayout() {
   // Fetch the count of pending leads for the sidebar badge
   useEffect(() => {
     const fetchCount = () => {
-      fetch('http://localhost:5000/api/admin/leads')
+      fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads')
         .then(res => res.json())
         .then(data => setPendingCount(data.length))
         .catch(err => console.error("Error fetching badge count:", err));

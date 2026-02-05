@@ -12,7 +12,7 @@ export default function AdminApplicants() {
 
   const fetchApplicants = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/admin/applications');
+      const response = await fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/applications');
       const data = await response.json();
       setApplicants(data);
     } catch (error) {
@@ -103,7 +103,7 @@ export default function AdminApplicants() {
                       <td className="px-6 py-4 text-center">
                         {applicant.resume_path ? (
                           <a
-                            href={`http://localhost:5000/${applicant.resume_path}`}
+                            href={`https://bluestoneinternationalpreschool.com/bgoi_api/${applicant.resume_path}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center justify-center p-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all shadow-md shadow-red-100"

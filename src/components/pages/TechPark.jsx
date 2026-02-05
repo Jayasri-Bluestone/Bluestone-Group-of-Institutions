@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Building2, Wifi, Shield, Zap, Users, Globe, Coffee, Trophy } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
+import Tech from "../../assets/tech.png";
 
 export function TechPark() { // Removed { onBack } prop
   // 2. Initialize the hook
@@ -85,7 +86,7 @@ export function TechPark() { // Removed { onBack } prop
             >
               <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-gray-700">
                 <img
-                  src="https://images.unsplash.com/photo-1763560956421-b3e4083e9fc9?auto=format&fit=crop&q=80&w=1080"
+                  src={Tech}
                   alt="Modern Tech Park Office"
                   className="w-full h-[450px] object-cover"
                 />

@@ -10,7 +10,7 @@ export function AdminLeads() {
   useEffect(() => { fetchLeads(); }, []);
 
   const fetchLeads = () => {
-    fetch('http://localhost:5000/api/admin/leads')
+    fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads')
       .then(res => res.json())
       .then(data => setLeads(Array.isArray(data) ? data : []))
       .catch(() => toast.error("Failed to load leads from server"));

@@ -4,32 +4,50 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Maximize2, X, Image as ImageIcon } from 'lucide-react';
 
+// --- IMAGE IMPORTS ---
+import ias1 from "../../assets/ias1.png";
+import ias2 from "../../assets/ias2.png";
+import ias4 from "../../assets/ias4.png";
+import ias5 from "../../assets/ias5.png";
+import scl1 from "../../assets/scl1.jpg";
+import scl2 from "../../assets/scl2.jpeg";
+import scl3 from "../../assets/scl3.JPG";
+import scl4 from "../../assets/scl4.jpg";
+import scl6 from "../../assets/scl6.JPG";
+import scl7 from "../../assets/scl7.JPG";
+import scl8 from "../../assets/scl8.jpg";
+import sport1 from "../../assets/sport1.JPG";
+import sport2 from "../../assets/sport2.jpg";
+import ocs1 from "../../assets/ocs1.png";
+import ocs3 from "../../assets/ocs3.png";
+import ocs4 from "../../assets/ocs4.png";
+import ocs6 from "../../assets/ocs6.png";
+
 export function GalleryPage() {
   const [filter, setFilter] = useState('All');
   const [selectedImg, setSelectedImg] = useState(null);
 
   const categories = ['All', 'IAS Academy', 'Technology', 'Preschool', 'Sports', 'Overseas Consulting', 'Events'];
 
-  // Cleaned data with unique IDs and varied aspect ratios for a better UI
   const photos = [
-    { id: 1, category: 'IAS Academy', title: 'Strategy Session', src: './src/assets/ias1.png' },
-    { id: 2, category: 'Technology', title: 'Tech Park Campus', src: './src/assets/scl4.jpg' },
-    { id: 3, category: 'Sports', title: 'Elite Training', src: './src/assets/sport1.JPG' },
-    { id: 4, category: 'Overseas Consulting', title: 'Global Opportunities', src: './src/assets/ocs1.png' },
-    { id: 5, category: 'IAS Academy', title: 'Seminar Hall', src: './src/assets/ias2.png' },
-    { id: 6, category: 'Events', title: 'Corporate Meet', src: './src/assets/scl3.JPG' },
-    { id: 7, category: 'Technology', title: 'Innovation Lab', src: './src/assets/ocs3.png' },
-    { id: 8, category: 'IAS Academy', title: 'Graduation Day', src: './src/assets/ias4.png' },
-    { id: 9, category: 'Overseas Consulting', title: 'Student Guidance', src: './src/assets/ocs4.png' },
-    { id: 10, category: 'IAS Academy', title: 'Expert Talk', src: './src/assets/ias5.png' },
-    { id: 11, category: 'Preschool', title: 'Creative Learning', src: './src/assets/scl1.jpg' },
-    { id: 12, category: 'Preschool', title: 'Play Area', src: './src/assets/scl2.jpeg' },
-    { id: 13, category: 'Preschool', title: 'Classroom Fun', src: './src/assets/scl4.jpg' },
-    { id: 14, category: 'Overseas Consulting', title: 'Visa Workshop', src: './src/assets/ocs6.png' },
-    { id: 15, category: 'Sports', title: 'Athletic Meet', src: './src/assets/sport2.jpg' },
-    { id: 16, category: 'Preschool', title: 'Story Time', src: './src/assets/scl6.JPG' },
-    { id: 17, category: 'Preschool', title: 'Art & Craft', src: './src/assets/scl7.JPG' },
-    { id: 18, category: 'Preschool', title: 'School Event', src: './src/assets/scl8.jpg' },
+    { id: 1, category: 'IAS Academy', title: 'Strategy Session', src: ias1 },
+    { id: 2, category: 'Technology', title: 'Tech Park Campus', src: scl4 },
+    { id: 3, category: 'Sports', title: 'Elite Training', src: sport1 },
+    { id: 4, category: 'Overseas Consulting', title: 'Global Opportunities', src: ocs1 },
+    { id: 5, category: 'IAS Academy', title: 'Seminar Hall', src: ias2 },
+    { id: 6, category: 'Events', title: 'Corporate Meet', src: scl3 },
+    { id: 7, category: 'Technology', title: 'Innovation Lab', src: ocs3 },
+    { id: 8, category: 'IAS Academy', title: 'Graduation Day', src: ias4 },
+    { id: 9, category: 'Overseas Consulting', title: 'Student Guidance', src: ocs4 },
+    { id: 10, category: 'IAS Academy', title: 'Expert Talk', src: ias5 },
+    { id: 11, category: 'Preschool', title: 'Creative Learning', src: scl1 },
+    { id: 12, category: 'Preschool', title: 'Play Area', src: scl2 },
+    { id: 13, category: 'Preschool', title: 'Classroom Fun', src: scl4 },
+    { id: 14, category: 'Overseas Consulting', title: 'Visa Workshop', src: ocs6 },
+    { id: 15, category: 'Sports', title: 'Athletic Meet', src: sport2 },
+    { id: 16, category: 'Preschool', title: 'Story Time', src: scl6 },
+    { id: 17, category: 'Preschool', title: 'Art & Craft', src: scl7 },
+    { id: 18, category: 'Preschool', title: 'School Event', src: scl8 },
   ];
 
   const filteredPhotos = useMemo(() => 
@@ -56,7 +74,7 @@ export function GalleryPage() {
           </motion.div>
         </div>
 
-        {/* Improved Filter Bar */}
+        {/* Filter Bar */}
         <div className="flex flex-wrap items-center gap-2 mb-12 overflow-x-auto pb-4 sm:pb-0 no-scrollbar">
           {categories.map((cat) => (
             <button
@@ -73,7 +91,7 @@ export function GalleryPage() {
           ))}
         </div>
 
-        {/* Gallery Grid - Responsive Columns */}
+        {/* Gallery Grid */}
         <motion.div 
           layout
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
@@ -96,7 +114,6 @@ export function GalleryPage() {
                   className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
                 />
                 
-                {/* Overlay with Glassmorphism */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-end p-8">
                   <motion.div
                     initial={{ y: 20, opacity: 0 }}
@@ -115,7 +132,7 @@ export function GalleryPage() {
           </AnimatePresence>
         </motion.div>
 
-        {/* No Results State */}
+        {/* No Results */}
         {filteredPhotos.length === 0 && (
           <div className="flex flex-col items-center justify-center py-40 text-gray-400">
             <ImageIcon size={64} strokeWidth={1} className="mb-4 opacity-20" />
@@ -124,7 +141,7 @@ export function GalleryPage() {
         )}
       </div>
 
-      {/* Lightbox Modal */}
+      {/* Lightbox */}
       <AnimatePresence>
         {selectedImg && (
           <motion.div 

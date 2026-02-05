@@ -1,7 +1,16 @@
 import { useRef } from "react";
-import { Linkedin, Mail, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, User } from "lucide-react";
 import Slider from "react-slick";
 import { motion } from "framer-motion";
+
+// --- 1. IMPORT TEAM IMAGES ---
+import neenaImg from "../assets/Neena.jpeg";
+import tamilImg from "../assets/Tamil.jpeg";
+import dharaniImg from "../assets/Dharani.jpeg";
+import saravananImg from "../assets/saravanan.jpeg";
+import maniImg from "../assets/ocs5.png";
+import divitImg from "../assets/Divit.jpg";
+
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 
@@ -12,37 +21,37 @@ export function OurPeople() {
     {
       name: "Mrs. Neena Priya",
       position: "Bluestone Overseas Co-ordinator",
-      image: "./src/assets/Neena.jpeg",
+      image: neenaImg, // Use variable
       bio: "Expert in international relations and global mobility, streamlining cross-border transitions for students and professionals.",
     },
     {
       name: "Mr. Tamil Selvan",
       position: "Bluestone IAS Academy Co-ordinator",
-      image: "./src/assets/Tamil.jpeg",
+      image: tamilImg,
       bio: "Dedicated educator specializing in civil service curriculum design and competitive examination strategy.",
     },
     {
       name: "Mr. Dharani Kumaresan",
       position: "Corresponded of Bluestone International Preschool",
-      image: "./src/assets/Dharani.jpeg",
+      image: dharaniImg,
       bio: "Specialist in early childhood development, implementing world-class Montessori and play-based learning frameworks.",
     },
     {
       name: "Mr. Saravanan",
       position: "Bluestone Placement Co-ordinator",
-      image: "./src/assets/saravanan.jpeg",
+      image: saravananImg,
       bio: "Bridging the gap between talent and industry through strategic corporate partnerships and career coaching.",
     },
     {
       name: "Mr. Mani",
       position: "Bluestone Tech-Park Co-ordinator",
-      image: "./src/assets/Mani.jpeg",
+      image: maniImg,
       bio: "Managing high-tech workspace infrastructure and fostering an ecosystem for startups and digital innovation.",
     },
     {
       name: "Mr. Divit",
       position: "Elite Sports Co-ordinator",
-      image: "./src/assets/Divit.jpeg",
+      image: divitImg,
       bio: "Driving athletic excellence through specialized training programs and professional sports management.",
     },
   ];
@@ -65,19 +74,20 @@ export function OurPeople() {
   return (
     <section className="py-20 bg-gradient-to-br from-red-500 via-black to-red-500 relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-6">
-
         {/* HEADER */}
-        <div className="text-center mb-16">
-          <span className="inline-block bg-white text-red-600 px-4 py-2 rounded-full text-sm font-semibold mb-4">
-            Our People
-          </span>
-          <h2 className="text-4xl sm:text-5xl font-bold text-white mb-4">
-            Meet Our Leadership Team
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          className="text-center mb-16"
+        >
+          <span className="text-white font-black tracking-widest uppercase text-sm">Our people</span>
+          <h2 className="text-5xl md:text-7xl font-black text-white mt-2">
+            Meet Our <span className="text-red-600">Leadership Team</span>
           </h2>
-          <p className="text-white/60 max-w-3xl mx-auto">
+          <p className="text-white/60 max-w-3xl mx-auto mt-6">
             Passionate leaders shaping the future of Bluestone.
           </p>
-        </div>
+        </motion.div>
 
         {/* SLIDER */}
         <div className="relative">
@@ -114,15 +124,10 @@ export function OurPeople() {
                       alt={member.name}
                       className="w-full h-full object-cover"
                     />
-
                   </motion.div>
 
                   {/* CONTENT */}
-                  <motion.div
-                   // whileHover={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="p-6 text-center"
-                  >
+                  <div className="p-6 text-center">
                     <h3 className="text-xl font-bold text-gray-900">
                       {member.name}
                     </h3>
@@ -132,7 +137,7 @@ export function OurPeople() {
                     <p className="text-sm text-gray-600">
                       {member.bio}
                     </p>
-                  </motion.div>
+                  </div>
                 </motion.div>
               </div>
             ))}
@@ -140,7 +145,6 @@ export function OurPeople() {
         </div>
       </div>
 
-      {/* DOTS STYLING */}
       <style jsx>{`
         :global(.slick-dots) {
           bottom: -45px;

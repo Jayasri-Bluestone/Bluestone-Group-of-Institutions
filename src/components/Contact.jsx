@@ -97,7 +97,7 @@ export function Contact() {
     const loadingToast = toast.loading("Sending your inquiry...");
 
     try {
-      const response = await fetch('http://localhost:5000/api/contact', {
+      const response = await fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -121,7 +121,13 @@ export function Contact() {
   return (
     <section id="contact" className="py-24 bg-white relative overflow-hidden">
       <Toaster position="top-center" />
-
+ <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                className="text-center mb-16"
+              >
+                <h2 className="text-5xl md:text-7xl font-extrabold text-red-600 mt-2">Contact <span className="text-black">Us</span></h2>
+              </motion.div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="flex flex-col lg:flex-row gap-16">
           
@@ -167,7 +173,6 @@ export function Contact() {
 
             </div>
 
- 
           </div>
 
           {/* Right Side: Form */}

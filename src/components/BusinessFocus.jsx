@@ -4,79 +4,88 @@ import React from "react";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 
+// --- 1. IMPORT ALL IMAGES ---
+import drowImg from "../assets/Drow.jpg";
+import preschoolThumb from "../assets/preschool.png";
+import ocsMain from "../assets/ocs.png";
+import overseasThumb from "../assets/overseas.png";
+import tnpscMain from "../assets/tnpsc.png";
+import iasThumb from "../assets/IAS.png";
+import placementMain from "../assets/placement.jpeg";
+import placementThumb from "../assets/placement.png";
+import techMain from "../assets/tech.png";
+import techThumb from "../assets/tech park.png";
+import natuMain from "../assets/natu.png";
+import eliteThumb from "../assets/elite sports.png";
+import langThumb from "../assets/lang hub.png";
+import innovationMain from "../assets/innovation.png";
+import startupThumb from "../assets/startup.png";
+import placement1Main from "../assets/placement1.png";
+import generalThumb from "../assets/general.png";
 
 export function BusinessFocus({ onNavigate }) {
   const businesses = [
     {
       title: "Preschool",
       description: "Early learning with global standards.",
-      mainImage:
-        "./src/assets/Drow.jpg",
-      thumbImage: "./src/assets/preschool.png",
+      mainImage: drowImg, // Use imported variable
+      thumbImage: preschoolThumb,
       page: "https://bluestoneinternationalpreschool.com/",
     },
     {
       title: "Overseas Consulting",
       description: "Guidance for education & careers abroad.",
-      mainImage:
-        "./src/assets/ocs.png",
-      thumbImage: "./src/assets/overseas.png",
+      mainImage: ocsMain,
+      thumbImage: overseasThumb,
       page: "https://www.bluestoneoverseas.com/",
     },
     {
       title: "IAS Academy",
       description: "Civil services coaching excellence.",
-      mainImage:
-        "./src/assets/tnpsc.png",
-      thumbImage: "./src/assets/IAS.png",
+      mainImage: tnpscMain,
+      thumbImage: iasThumb,
       page: "https://bluestoneiasacademy.com/",
     },
     {
       title: "Placement Services",
       description: "Connecting talent with opportunity.",
-      mainImage:
-        "./src/assets/placement.jpeg",
-      thumbImage: "./src/assets/placement.png",
+      mainImage: placementMain,
+      thumbImage: placementThumb,
       page: "https://bluestoneplacements.com/",
     },
     {
       title: "Tech Park",
       description: "Infrastructure for tech innovation.",
-      mainImage:
-        "./src/assets/tech.png",
-      thumbImage: "./src/assets/tech park.png",
+      mainImage: techMain,
+      thumbImage: techThumb,
       page: "https://bluestonetechpark.com/",
     },
     {
       title: "Sport Academy",
       description: "Elite athletic training programs.",
-      mainImage:
-        "./src/assets/natu.png",
-      thumbImage: "./src/assets/elite sports.png",
+      mainImage: natuMain,
+      thumbImage: eliteThumb,
       page: "https://bluestoneelitesports.com/",
     },
     {
       title: "Language Hub",
       description: "Learn global languages with experts.",
-      mainImage:
-        "https://images.unsplash.com/photo-1758270704787-615782711641?auto=format&fit=crop&q=80&w=800",
-      thumbImage: "./src/assets/lang hub.png",
+      mainImage: "https://images.unsplash.com/photo-1758270704787-615782711641?auto=format&fit=crop&q=80&w=800",
+      thumbImage: langThumb,
       page: "https://www.bluestoneoverseas.com/",
     },
     {
       title: "Bluestone Start-Ups",
       description: "Mentorship for innovative founders.",
-      mainImage:
-        "./src/assets/innovation.png",
-      thumbImage: "./src/assets/startup.png",
+      mainImage: innovationMain,
+      thumbImage: startupThumb,
       page: "https://bluestonetechpark.com/",
     },
     {
       title: "Bluestone Investment",
       description: "Entertainment and recreational spaces.",
-      mainImage:
-        "./src/assets/placement1.png",
-      thumbImage: "./src/assets/general.png",
+      mainImage: placement1Main,
+      thumbImage: generalThumb,
       page: "",
     },
   ];
@@ -94,9 +103,13 @@ export function BusinessFocus({ onNavigate }) {
     <section id="business-focus" className="min-h-screen bg-white md:m-24 m-6 flex items-center">
       <div className="max-w-5xl mx-auto w-full">
 
-        <h2 className="text-4xl md:text-5xl font-black text-center mb-10 text-black">
-          Business Verticals
-        </h2>
+       <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                className="text-center mb-16"
+              >
+                <h2 className="text-5xl md:text-7xl font-extrabold text-red-600 mt-2">Business <span className="text-black">Verticals</span></h2>
+              </motion.div>
 
         <div className="grid grid-cols-3 md:grid-cols-3 gap-4 md:gap-6">
           {businesses.map((b, i) => (

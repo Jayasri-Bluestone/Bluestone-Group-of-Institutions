@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Languages, Globe, Users, BookOpen, Mic, Video, MessageSquare, Headphones, BarChart3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
+import heroImage from "../../assets/ocs5.png";
 
 export function LanguageHub() { // Removed { onBack } from props
   // 2. Initialize the hook
@@ -99,7 +100,7 @@ export function LanguageHub() { // Removed { onBack } from props
             >
               <div className="relative rounded-[2.5rem] overflow-hidden shadow-2xl z-10 border-8 border-white">
                 <img
-                  src="https://images.unsplash.com/photo-1758270704787-615782711641?auto=format&fit=crop&q=80&w=1000"
+                 src={heroImage}
                   alt="Language Learning Environment"
                   className="w-full h-[550px] object-cover"
                 />
@@ -122,11 +123,11 @@ export function LanguageHub() { // Removed { onBack } from props
               <motion.div
                 key={index}
                 whileHover={{ y: -10, boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)" }}
-                className="bg-white rounded-3xl p-8 border border-slate-100 text-center cursor-pointer transition-all group"
+                className="bg-red-300 rounded-3xl p-8 border border-red-600 border-2 text-center cursor-pointer transition-all group"
               >
                 <div className="text-6xl mb-6 group-hover:scale-125 transition-transform duration-300 inline-block">{lang.flag}</div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">{lang.name}</h3>
-                <p className="text-indigo-600 text-xs font-bold uppercase tracking-wider">{lang.level} Prep</p>
+                <p className="text-red-600 text-xs font-bold uppercase tracking-wider">{lang.level} Prep</p>
               </motion.div>
             ))}
           </div>
@@ -146,7 +147,7 @@ export function LanguageHub() { // Removed { onBack } from props
               <div className="grid sm:grid-cols-2 gap-8">
                 {methods.map((item, idx) => (
                   <div key={idx} className="space-y-4">
-                    <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center">
+                    <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center">
                       <item.icon size={24} />
                     </div>
                     <h4 className="text-xl font-bold">{item.title}</h4>
@@ -159,7 +160,7 @@ export function LanguageHub() { // Removed { onBack } from props
             <div className="relative">
                <div className="bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-[2rem] p-8 border border-white/10 backdrop-blur-sm">
                   <div className="flex items-center gap-4 mb-8">
-                    <div className="p-3 bg-green-500 rounded-lg">
+                    <div className="p-3 bg-red-500 rounded-lg">
                        <BarChart3 size={24} />
                     </div>
                     <div>
@@ -179,7 +180,7 @@ export function LanguageHub() { // Removed { onBack } from props
                            <motion.div 
                             initial={{ width: 0 }}
                             whileInView={{ width: `${85 - (i * 10)}%` }}
-                            className="h-full bg-indigo-500"
+                            className="h-full bg-red-500"
                            />
                         </div>
                       </div>
@@ -199,9 +200,9 @@ export function LanguageHub() { // Removed { onBack } from props
           </div>
           <h2 className="text-4xl font-bold text-slate-900 mb-6">Ready to break the language barrier?</h2>
           <p className="text-slate-500 text-xl mb-10">Sign up for a free 30-minute assessment with a native tutor.</p>
-          <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 text-white px-12 py-8 text-xl rounded-2xl shadow-xl shadow-indigo-100">
+          {/* <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 text-white px-12 py-8 text-xl rounded-2xl shadow-xl shadow-indigo-100">
             Book Free Assessment
-          </Button>
+          </Button> */}
         </div>
       </section>
     </div>

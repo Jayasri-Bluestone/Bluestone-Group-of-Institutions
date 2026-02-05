@@ -15,7 +15,7 @@ export function ApprovedLeads() {
 
   const fetchApprovedLeads = () => {
     setLoading(true);
-    fetch('http://localhost:5000/api/admin/approved-leads')
+    fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/approved-leads')
       .then(res => res.json())
       .then(data => {
         setApprovedLeads(Array.isArray(data) ? data : []);

@@ -1,11 +1,9 @@
 "use client";
 
 import * as React from "react";
-// 1. Import useNavigate
 import { useNavigate } from 'react-router-dom'; 
 import { 
-  ArrowLeft, GraduationCap, Users, Award, BookOpen, Heart, 
-  Star, ShieldCheck, Sun, Music, Palette, ChevronLeft, ChevronRight 
+  ArrowLeft, GraduationCap, Star, ShieldCheck, Sun, Music, Palette, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
@@ -15,7 +13,14 @@ import Slider from "react-slick";
 import "slick-carousel/slick/slick.css"; 
 import "slick-carousel/slick/slick-theme.css";
 
-// Custom Arrow Components (remain the same)
+// --- IMAGE IMPORTS ---
+import schoolHero from "../../assets/School.jpg";
+import scl1 from "../../assets/scl1.jpg";
+import scl6 from "../../assets/scl6.jpg";
+import scl7 from "../../assets/scl7.jpg";
+import scl8 from "../../assets/scl8.jpg";
+
+// Custom Arrow Components
 function NextArrow(props) {
   const { onClick } = props;
   return (
@@ -40,8 +45,7 @@ function PrevArrow(props) {
   );
 }
 
-export function InternationalPreschool() { // Removed { onBack } from props
-  // 2. Initialize the hook
+export function InternationalPreschool() {
   const navigate = useNavigate();
 
   const programs = [
@@ -99,7 +103,6 @@ export function InternationalPreschool() { // Removed { onBack } from props
       <section className="relative pt-24 pb-20 overflow-hidden bg-gradient-to-b from-rose-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           
-          {/* 3. Update the onClick to use navigate('/') */}
           <motion.button 
             onClick={() => navigate('/')} 
             className="flex items-center gap-2 text-slate-600 hover:text-red-600 mb-8 group font-medium"
@@ -127,14 +130,14 @@ export function InternationalPreschool() { // Removed { onBack } from props
             </motion.div>
 
             <div className="relative rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-white">
-              <img src="https://images.unsplash.com/photo-1761208663763-c4d30657c910?auto=format&fit=crop&q=80&w=1000" alt="Children learning" className="w-full h-[500px] object-cover" />
+              <img src={schoolHero} alt="Children learning" className="w-full h-[500px] object-cover" />
             </div>
           </div>
         </div>
       </section>
 
       {/* Pillars */}
-      <section className="py-20 max-w-7xl bg-red-400 rounded-4xl mx-auto px-4 shadow-xl">
+      <section className="py-20 max-w-7xl bg-gradient-to-br from-red-600 to-black/50 rounded-4xl mx-auto px-4 shadow-xl">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {pillars.map((pillar, idx) => (
             <div key={idx} className="flex flex-col items-center text-center space-y-3 group">
@@ -159,10 +162,10 @@ export function InternationalPreschool() { // Removed { onBack } from props
 
           <div className="flex-1 order-1 lg:order-2 grid grid-cols-2 gap-4 w-full">
             {[
-              { title: "Safety First", img: "https://images.unsplash.com/photo-1594608661623-aa0bd3a69d98?auto=format&fit=crop&q=80&w=500" },
-              { title: "Global Standards", img: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&q=80&w=500" },
-              { title: "Creative Play", img: "https://images.unsplash.com/photo-1587654062353-ef925a8cc4c6?auto=format&fit=crop&q=80&w=500" },
-              { title: "Native Fluency", img: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&q=80&w=500" },
+              { title: "Safety First", img: scl7 },
+              { title: "Global Standards", img: scl6 },
+              { title: "Creative Play", img: scl8 },
+              { title: "Native Fluency", img: scl1 },
             ].map((item, idx) => (
               <div key={idx} className="relative h-48 rounded-2xl overflow-hidden group shadow-md">
                 <img src={item.img} alt={item.title} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
@@ -176,7 +179,7 @@ export function InternationalPreschool() { // Removed { onBack } from props
         </div>
       </section>
 
-      {/* Programs Slick Carousel */}
+      {/* Programs Slider */}
       <section className="py-24 bg-slate-900 text-white overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-left mb-16">
@@ -198,7 +201,6 @@ export function InternationalPreschool() { // Removed { onBack } from props
                       <h3 className="text-2xl text-red-600 font-bold mb-4">{program.name}</h3>
                       <p className="text-black leading-relaxed text-sm mb-8 flex-grow">{program.focus}</p>
                       
-                      {/* 2. Button now uses dynamic program.link */}
                       <Button asChild variant="outline" className="w-full bg-red-600 text-white hover:bg-black hover:text-white border-none mt-auto">
                         <a href={program.link} target="_blank" rel="noopener noreferrer">Program Details</a>
                       </Button>
@@ -216,7 +218,6 @@ export function InternationalPreschool() { // Removed { onBack } from props
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} className="bg-gradient-to-br from-red-600 to-black rounded-[3rem] p-16 text-white shadow-2xl relative overflow-hidden">
           <h2 className="text-4xl font-bold mb-6">Give Your Child the Best Start</h2>
           <p className="text-xl mb-10 text-red-50 max-w-2xl mx-auto">Admission is open for the new session. Limited seats available.</p>
-          <Button size="lg" className="bg-white text-red-600 hover:bg-red-50 px-10 py-8 text-xl rounded-2xl font-bold">Book a Tour</Button>
         </motion.div>
       </section>
     </div>

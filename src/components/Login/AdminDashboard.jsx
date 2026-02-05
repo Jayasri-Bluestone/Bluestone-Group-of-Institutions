@@ -21,9 +21,9 @@ export function AdminDashboard() {
         setLoading(true);
         // Matching your Express routes: /leads, /applications, and /jobs
         const [leadsRes, appsRes, jobsRes] = await Promise.all([
-          fetch('http://localhost:5000/api/admin/leads'),
-          fetch('http://localhost:5000/api/admin/applications'),
-          fetch('http://localhost:5000/api/jobs')
+          fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads'),
+          fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/applications'),
+          fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/jobs')
         ]);
 
         const leads = await leadsRes.json();

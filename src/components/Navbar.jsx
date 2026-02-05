@@ -3,6 +3,8 @@ import { Link, useLocation } from 'react-router-dom'; // Import Link and useLoca
 import { Menu, X, ChevronDown, GraduationCap, Plane, BookOpen, Briefcase, Building2, Trophy, Languages, Lightbulb, MoreHorizontal } from 'lucide-react';
 import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import Logo from "../assets/logo.png";
+
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -64,7 +66,7 @@ export function Navbar() {
           {/* Logo */}
           <Link to="/" className="flex items-center group">
             <div className="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform ">
-              <img src='./src/assets/logo.png'/>
+              <img src={Logo}/>
             </div>
             <span className="ml-3 text-lg font-bold bg-gradient-to-r from-red-600 to-red-700 bg-clip-text text-transparent">
               BLUESTONE GROUP OF INSTITUTIONS

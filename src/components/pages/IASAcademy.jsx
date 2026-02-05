@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, Award, Users, Target, CheckCircle2, Trophy, Landmark, GraduationCap, Calendar } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
+import IAS from "../../assets/ias5.png";
 
 export function IASAcademy() { // Removed { onBack } from props
   // 2. Initialize the hook
@@ -98,7 +99,7 @@ export function IASAcademy() { // Removed { onBack } from props
               <div className="absolute inset-0 bg-amber-500/10 rounded-[2.5rem] rotate-3 scale-105 blur-sm"></div>
               <div className="relative rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white">
                 <img
-                  src="https://images.unsplash.com/photo-1756032433560-56547efed550?auto=format&fit=crop&q=80&w=1000"
+                  src={IAS}
                   alt="UPSC Aspirants Studying"
                   className="w-full h-[550px] object-cover"
                 />

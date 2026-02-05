@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Briefcase, Users, TrendingUp, Award, CheckCircle2, Building, Search, FileText, UserCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
+import placement from "../../assets/ocs.png";
 
 export function PlacementServices() { // Removed { onBack } prop
   // 2. Initialize the hook
@@ -86,7 +87,7 @@ export function PlacementServices() { // Removed { onBack } prop
             >
               <div className="relative rounded-3xl overflow-hidden shadow-2xl border-8 border-white">
                 <img
-                  src="https://images.unsplash.com/photo-1698047681452-08eba22d0c64?auto=format&fit=crop&q=80&w=1000"
+                  src={placement}
                   alt="Job Placement Recruitment"
                   className="w-full h-full object-cover"
                 />

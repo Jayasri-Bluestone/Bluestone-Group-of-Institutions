@@ -57,24 +57,19 @@ export function Logos() {
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-br from-purple-100/40 to-pink-100/40 rounded-full filter blur-3xl"></div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true }}
-          className="text-center mb-16"
-        >
-          <div className="inline-block bg-white text-red-600 px-4 py-2 rounded-full text-sm font-semibold mb-4 shadow-lg">
-            Our Partners
-          </div>
-          <h2 className="text-4xl sm:text-5xl font-bold text-white mb-6">
-            Trusted by Industry Leaders
-          </h2>
-          <p className="text-xl text-white/60 max-w-3xl mx-auto">
+         <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                className="text-center mb-16"
+              >
+                <span className="text-red-600 font-black text-white tracking-widest uppercase text-sm">Our Partners</span>
+                <h2 className="text-5xl md:text-7xl font-black text-white mt-2">Trusted by <span className="text-red-600">Industry Leaders</span></h2>
+               
+           <p className="text-lg text-white/60 max-w-3xl mx-auto mt-6">
             We're proud to collaborate with world-class organizations that share our commitment to excellence.
           </p>
-        </motion.div>
-
+              </motion.div>
+      
         {/* Infinite Scrolling Logos */}
         <div className="mb-16">
           <Slider ref={sliderRef} {...settings}>
