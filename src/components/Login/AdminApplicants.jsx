@@ -10,13 +10,21 @@ export default function AdminApplicants() {
     fetchApplicants();
   }, []);
 
-  const fetchApplicants = async () => {
+ const fetchApplicants = async () => {
     try {
+      setLoading(true);
       const response = await fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/applications');
+      
+      // Safety 1: If server returns 500 or 404, throw error to catch block
+      if (!response.ok) throw new Error("Server responded with error");
+
       const data = await response.json();
-      setApplicants(data);
+      
+      // Safety 2: Ensure data is actually an array before setting state
+      setApplicants(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error fetching applicants:", error);
+      setApplicants([]); // Fallback to empty array so .map() doesn't crash
     } finally {
       setLoading(false);
     }

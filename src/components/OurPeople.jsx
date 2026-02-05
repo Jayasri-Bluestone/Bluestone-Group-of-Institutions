@@ -8,9 +8,8 @@ import neenaImg from "../assets/Neena.jpeg";
 import tamilImg from "../assets/Tamil.jpeg";
 import dharaniImg from "../assets/Dharani.jpeg";
 import saravananImg from "../assets/saravanan.jpeg";
-import maniImg from "../assets/ocs5.png";
+import maniImg from "../assets/Mani.png";
 import divitImg from "../assets/Divit.jpg";
-
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 

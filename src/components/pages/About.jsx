@@ -104,7 +104,7 @@ export function AboutPage() {
                 A Legacy of Excellence and Innovation
               </h2>
               <p className="text-lg text-gray-600 mb-6 leading-relaxed">
-                Founded with a vision to create lasting value, Bluestone Groups has grown into a diversified business conglomerate with a strong presence across multiple industries. 
+                Founded with a vision to create lasting value, Bluestone Group Of Institutions has grown into a diversified business conglomerate with a strong presence across multiple industries. 
               </p>
               <p className="text-lg text-gray-600 leading-relaxed">
                 We believe in building sustainable businesses that not only generate profits but also contribute positively to society. Our diverse portfolio spans technology, real estate, healthcare, and manufacturing.

@@ -173,6 +173,7 @@ export function Contact() {
 
             </div>
 
+ 
           </div>
 
           {/* Right Side: Form */}

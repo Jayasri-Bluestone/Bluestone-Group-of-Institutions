@@ -78,7 +78,7 @@ export function AdminLeads() {
   const handleApprove = async (lead) => {
     const loadingToast = toast.loading(`Processing ${lead.name}...`);
     try {
-      const response = await fetch(`http://localhost:5000/api/admin/leads/approve/${lead.id}`, {
+      const response = await fetch(`https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads/approve/${lead.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(lead)
@@ -93,7 +93,7 @@ export function AdminLeads() {
   const handleRemove = async (id) => {
     const loadingToast = toast.loading("Removing...");
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/leads/${id}`, { method: 'DELETE' });
+      const res = await fetch(`https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setLeads(leads.filter(l => l.id !== id));
         toast.success("Enquiry removed", { id: loadingToast });
