@@ -1,21 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom'; // Import Link and useLocation
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronDown, GraduationCap, Plane, BookOpen, Briefcase, Building2, Trophy, Languages, Lightbulb, MoreHorizontal } from 'lucide-react';
 import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import Logo from "../assets/logo.png";
 
-
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isBusinessDropdownOpen, setIsBusinessDropdownOpen] = useState(false);
-  const location = useLocation(); // To check current path
+  const [mobileBusinessOpen, setMobileBusinessOpen] = useState(false);
+  
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 50);
-    };
+    const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
@@ -32,92 +32,84 @@ export function Navbar() {
     { label: 'Bluestone Investments', path: '/other-services', icon: MoreHorizontal },
   ];
 
-  // Modified nav items to use IDs for home sections
   const navItems = [
     { label: 'Home', path: '/' },
-    { label: 'About Us', path: '/about', hash: 'about' },
+    { label: 'About', path: '/about', hash: 'about' }, // Shortened for tablet
     { label: 'Gallery', path: '/gallery', hash: 'people' },
     { label: 'Career', path: '/career', hash: 'vision' },
     { label: 'Contact', path: '/contact', hash: 'contact' },
   ];
 
-  const handleNavClick = (hash) => {
-    setIsMenuOpen(false);
-    if (hash) {
-      setTimeout(() => {
-        document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
-    }
-  };
-
   return (
     <motion.nav
       initial={{ y: -100 }}
       animate={{ y: 0 }}
-      transition={{ duration: 0.5 }}
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled
-          ? 'bg-white/55 backdrop-blur-md shadow-lg'
-          : 'bg-white/40 backdrop-blur-sm'
+        scrolled ? 'bg-white shadow-md py-1' : 'bg-white/95 backdrop-blur-md py-3 border-b border-gray-100'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <Link to="/" className="flex items-center group">
-            <div className="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform ">
-              <img src={Logo}/>
+          
+          {/* Logo Section - Responsive widths */}
+          <Link to="/" className="flex items-center group shrink-0">
+            <img src={Logo} alt="Logo" className="w-8 h-8 md:w-10 md:h-10 object-contain transition-transform group-hover:scale-105" />
+            <div className="ml-2 md:ml-3 flex flex-col">
+              <span className="text-sm md:text-base lg:text-lg font-extrabold bg-gradient-to-r from-red-600 to-red-700 bg-clip-text text-transparent leading-none">
+                BLUESTONE GROUP
+              </span>
+              {/* Hide subtext on smaller tablets to prevent push-out */}
+              <span className="hidden lg:block text-[10px] font-bold text-gray-500 tracking-widest mt-0.5">
+                OF INSTITUTIONS
+              </span>
             </div>
-            <span className="ml-3 text-lg font-bold bg-gradient-to-r from-red-600 to-red-700 bg-clip-text text-transparent">
-              BLUESTONE GROUP OF INSTITUTIONS
-            </span>
           </Link>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                to={item.path}
-                onClick={() => handleNavClick(item.hash)}
-                className="text-gray-700 hover:text-red-600 transition-colors duration-200 relative group font-medium"
-              >
-                {item.label}
-                <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-red-600 to-red-700 group-hover:w-full transition-all duration-300"></span>
-              </Link>
-            ))}
+          {/* Navigation - Tablet logic: use smaller gaps and hide button if needed */}
+          <div className="hidden md:flex items-center gap-3 lg:gap-8">
+            <div className="flex items-center gap-3 lg:gap-6">
+              {navItems.map((item) => (
+                <Link
+                  key={item.label}
+                  to={item.path}
+                  className={`text-[13px] lg:text-sm font-semibold transition-colors ${
+                    location.pathname === item.path ? 'text-red-600' : 'text-gray-600 hover:text-red-600'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
 
-            {/* Business Focus Dropdown */}
+            {/* Business Focus - Refined for tablet */}
             <div 
               className="relative"
               onMouseEnter={() => setIsBusinessDropdownOpen(true)}
               onMouseLeave={() => setIsBusinessDropdownOpen(false)}
             >
-              <button className="text-gray-700 hover:text-red-600 transition-colors duration-200 relative group font-medium flex items-center gap-1">
-                Business Focus
-                <ChevronDown className={`w-4 h-4 transition-transform ${isBusinessDropdownOpen ? 'rotate-180' : ''}`} />
+              <button className="flex items-center gap-1 text-[13px] lg:text-sm font-semibold text-gray-600 hover:text-red-600 py-2">
+               Business Focus <ChevronDown className="w-3 h-3" />
               </button>
 
               <AnimatePresence>
                 {isBusinessDropdownOpen && (
                   <motion.div
-                    initial={{ opacity: 0, y: -10 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="absolute top-full left-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden"
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute top-full right-0 mt-1 w-64 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden"
                   >
-                    <div className="p-2">
+                    <div className="p-1">
                       {businessItems.map((item) => (
                         <Link
                           key={item.path}
                           to={item.path}
-                          onClick={() => setIsBusinessDropdownOpen(false)}
-                          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-red-50 rounded-xl transition-colors group"
+                          className="flex items-center gap-3 p-2.5 hover:bg-red-50 rounded-lg transition-colors group"
                         >
-                          <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-red-700 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <item.icon className="text-white" size={20} />
+                          <div className="w-7 h-7 bg-red-600 rounded flex items-center justify-center shrink-0">
+                            <item.icon className="text-white" size={14} />
                           </div>
-                          <span className="text-gray-700 group-hover:text-red-600 font-medium">{item.label}</span>
+                          <span className="text-xs font-bold text-gray-700 group-hover:text-red-600">{item.label}</span>
                         </Link>
                       ))}
                     </div>
@@ -125,27 +117,84 @@ export function Navbar() {
                 )}
               </AnimatePresence>
             </div>
-            
-            {/* Admin Access (Optional Hidden Link or Button) */}
-           {/* Enquiry Now Button - Scrolls to Contact Section */}
-<Button 
-  onClick={() => handleNavClick('contact')}
-  className="text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 shadow-md hover:shadow-red-100 transition-all active:scale-95"
->
-  Enquiry Now
-</Button>
+
+            {/* Compact button for tablets */}
+            <Button 
+              onClick={() => navigate('/contact')}
+              className="hidden lg:flex text-white bg-red-600 hover:bg-red-700 h-9 px-4 text-xs font-bold uppercase tracking-wider"
+            >
+              Enquiry
+            </Button>
           </div>
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden">
-            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-gray-700 hover:text-red-600 p-2">
+          {/* Mobile/Tablet Burger Button */}
+          <div className="md:hidden flex items-center gap-2">
+             <Button 
+              onClick={() => navigate('/contact')}
+              className="flex md:hidden bg-red-600 text-[10px] h-8 px-3"
+            >
+              Enquiry
+            </Button>
+            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-gray-700 p-1">
               {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Menu logic would similarly use <Link> components */}
+      {/* Mobile/Tablet Drawer */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed inset-y-0 right-0 w-[280px] bg-white shadow-2xl z-50 md:hidden flex flex-col"
+          >
+            <div className="p-4 flex justify-between items-center border-b">
+              <span className="font-bold text-red-600">MENU</span>
+              <button onClick={() => setIsMenuOpen(false)}><X size={24} /></button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {navItems.map((item) => (
+                <Link
+                  key={item.label}
+                  to={item.path}
+                  className="block p-3 text-sm font-bold text-gray-700 hover:bg-red-50 rounded-lg"
+                >
+                  {item.label}
+                </Link>
+              ))}
+              
+              <div className="pt-2">
+                <button 
+                  onClick={() => setMobileBusinessOpen(!mobileBusinessOpen)}
+                  className="w-full flex justify-between items-center p-3 text-sm font-bold text-gray-700"
+                >
+                  BUSINESS FOCUS <ChevronDown size={16} />
+                </button>
+                {mobileBusinessOpen && (
+                  <div className="ml-4 space-y-1">
+                    {businessItems.map(item => (
+                      <Link key={item.path} to={item.path} className="flex items-center gap-3 p-2 text-xs text-gray-600">
+                        <item.icon size={14} className="text-red-600" /> {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t">
+              <Button onClick={() => navigate('/contact')} className="w-full bg-red-600 text-white">
+                ENQUIRY NOW
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.nav>
   );
 }

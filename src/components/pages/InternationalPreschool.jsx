@@ -1,45 +1,30 @@
 "use client";
 
 import * as React from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom'; 
 import { 
-  ArrowLeft, GraduationCap, Star, ShieldCheck, Sun, Music, Palette, ChevronLeft, ChevronRight 
+  ArrowLeft, GraduationCap, Star, ChevronLeft, ChevronRight, Loader2 
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
-
-// Slick Imports
 import Slider from "react-slick";
 import "slick-carousel/slick/slick.css"; 
 import "slick-carousel/slick/slick-theme.css";
+import { API_BASE_URL } from '../../apiConfig';
 
-// --- IMAGE IMPORTS ---
-import schoolHero from "../../assets/School.jpg";
-import scl1 from "../../assets/scl1.jpg";
-import scl6 from "../../assets/scl6.jpg";
-import scl7 from "../../assets/scl7.jpg";
-import scl8 from "../../assets/scl8.jpg";
-
-// Custom Arrow Components
-function NextArrow(props) {
-  const { onClick } = props;
+// Custom Arrow Components (Remain the same)
+function NextArrow({ onClick }) {
   return (
-    <button
-      onClick={onClick}
-      className="absolute -right-4 lg:-right-12 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg hover:bg-red-700 transition-colors hidden md:flex"
-    >
+    <button onClick={onClick} className="absolute -right-4 lg:-right-12 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg hover:bg-red-700 hidden md:flex">
       <ChevronRight size={24} />
     </button>
   );
 }
 
-function PrevArrow(props) {
-  const { onClick } = props;
+function PrevArrow({ onClick }) {
   return (
-    <button
-      onClick={onClick}
-      className="absolute -left-4 lg:-left-12 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg hover:bg-red-700 transition-colors hidden md:flex"
-    >
+    <button onClick={onClick} className="absolute -left-4 lg:-left-12 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg hover:bg-red-700 hidden md:flex">
       <ChevronLeft size={24} />
     </button>
   );
@@ -47,39 +32,49 @@ function PrevArrow(props) {
 
 export function InternationalPreschool() {
   const navigate = useNavigate();
+  const [images, setImages] = useState({}); // Changed to object for key-value mapping
+  const [loading, setLoading] = useState(true);
+
+  // --- FETCH PRESCHOOL IMAGES ---
+  useEffect(() => {
+    const fetchPreschoolData = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/media?category=focus`);
+        const data = await res.json();
+        const finalData = Array.isArray(data) ? data : data.data || [];
+        
+        const mappedMedia = {};
+        finalData.forEach(item => {
+          const key = item.alt_text?.trim();
+          if (key) {
+            // BASE64 LOGIC: Use the data string if available, 
+            // otherwise build the URL with cache-busting
+            if (item.url.startsWith('data:')) {
+              mappedMedia[key] = item.url;
+            } else {
+              const fullUrl = item.url.startsWith('http') ? item.url : `${API_BASE_URL}/${item.url}`;
+              mappedMedia[key] = `${fullUrl}?v=${Date.now()}`;
+            }
+          }
+        });
+        setImages(mappedMedia);
+      } catch (err) {
+        console.error("Preschool Fetch Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPreschoolData();
+  }, []);
+
+  // Image Mapping Helper (Fetches by Alt Text Key)
+  const getImg = (altKey) => images[altKey] || "https://placehold.co/800x600?text=Upload+Image";
 
   const programs = [
-    { 
-      age: '2-3 Years', 
-      name: 'NESTLERS', 
-      focus: 'Our Nestlers program provides a safe, caring, and stimulating environment where children take their first steps into structured learning.',
-      link: 'https://bluestoneinternationalpreschool.com/program/nestlers'
-    },
-    { 
-      age: '3-4 Years', 
-      name: 'BAMBINO', 
-      focus: 'The Bambino program nurtures natural curiosity through play-based and experiential learning for foundational growth.',
-      link: 'https://bluestoneinternationalpreschool.com/program/bambino'
-    },
-    { 
-      age: '4-5 Years', 
-      name: 'B JUNIOR', 
-      focus: 'B Junior offers a balanced blend of guided instruction and exploratory play to develop problem-solving skills.',
-      link: 'https://bluestoneinternationalpreschool.com/program/b-junior'
-    },
-    { 
-      age: '5-6 Years', 
-      name: 'B SENIOR', 
-      focus: 'The B Senior program equips children with the academic and emotional readiness required for primary school.',
-      link: 'https://bluestoneinternationalpreschool.com/program/b-senior'
-    },
-  ];
-
-  const pillars = [
-    { icon: Sun, label: 'Nature Play' },
-    { icon: Music, label: 'Rhythm & Arts' },
-    { icon: Palette, label: 'Creative Expression' },
-    { icon: ShieldCheck, label: 'Emotional Safety' }
+    { age: '2-3 Years', name: 'NESTLERS', focus: 'Our Nestlers program provides a safe, caring, and stimulating environment.', link: 'https://bluestoneinternationalpreschool.com/program/nestlers' },
+    { age: '3-4 Years', name: 'BAMBINO', focus: 'The Bambino program nurtures natural curiosity through play-based learning.', link: 'https://bluestoneinternationalpreschool.com/program/bambino' },
+    { age: '4-5 Years', name: 'B JUNIOR', focus: 'B Junior offers a balanced blend of guided instruction and exploratory play.', link: 'https://bluestoneinternationalpreschool.com/program/b-junior' },
+    { age: '5-6 Years', name: 'B SENIOR', focus: 'The B Senior program equips children with academic and emotional readiness.', link: 'https://bluestoneinternationalpreschool.com/program/b-senior' },
   ];
 
   const settings = {
@@ -97,18 +92,19 @@ export function InternationalPreschool() {
     ]
   };
 
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-white">
+      <Loader2 className="animate-spin text-red-600" size={48} />
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative pt-24 pb-20 overflow-hidden bg-gradient-to-b from-rose-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          
-          <motion.button 
-            onClick={() => navigate('/')} 
-            className="flex items-center gap-2 text-slate-600 hover:text-red-600 mb-8 group font-medium"
-          >
-            <ArrowLeft className="group-hover:-translate-x-1 transition-transform" />
-            <span>Back to Home</span>
+          <motion.button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-600 hover:text-red-600 mb-8 font-medium">
+            <ArrowLeft /> <span>Back to Home</span>
           </motion.button>
 
           <div className="grid md:grid-cols-2 gap-16 items-center">
@@ -124,52 +120,43 @@ export function InternationalPreschool() {
               <p className="text-xl text-slate-600 mb-10 max-w-lg">
                 Nurturing curiosity through an international curriculum designed to build confidence and creativity.
               </p>
-              <Button asChild className="bg-red-600 hover:bg-red-700 text-white px-8 py-6 rounded-2xl text-lg font-bold shadow-lg shadow-red-100 transition-all">
-                <a href="https://bluestoneinternationalpreschool.com/" target="_blank" rel="noopener noreferrer">Visit Our Website</a>
+              <Button asChild className="bg-red-600 hover:bg-red-700 text-white px-8 py-6 rounded-2xl text-lg font-bold shadow-lg shadow-red-100">
+                <a href="https://bluestoneinternationalpreschool.com/" target="_blank">Visit Our Website</a>
               </Button>
             </motion.div>
 
+            {/* DYNAMIC HERO IMAGE (Key: hero_preschool) */}
             <div className="relative rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-white">
-              <img src={schoolHero} alt="Children learning" className="w-full h-[500px] object-cover" />
+              <img src={getImg("Drow.jpg")} alt="Children learning" className="w-full h-[500px] object-cover" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* Pillars */}
-      <section className="py-20 max-w-7xl bg-gradient-to-br from-red-600 to-black/50 rounded-4xl mx-auto px-4 shadow-xl">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          {pillars.map((pillar, idx) => (
-            <div key={idx} className="flex flex-col items-center text-center space-y-3 group">
-              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center text-red-500 group-hover:bg-black group-hover:text-white transition-all duration-300">
-                <pillar.icon size={28} />
-              </div>
-              <span className="font-bold text-white uppercase text-xs tracking-widest">{pillar.label}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Educational Philosophy */}
+      {/* Educational Philosophy (Dynamic Grid) */}
       <section className="py-24 max-w-7xl mx-auto px-4 overflow-hidden">
         <div className="flex flex-col lg:flex-row items-center gap-16">
-          <div className="flex-1 order-2 lg:order-1">
+          <div className="flex-1">
             <h2 className="text-4xl font-bold text-red-600 mb-8">Our Developmental Philosophy</h2>
-            <p className="text-slate-600 text-lg leading-relaxed mt-6">
-              We follow the <strong className="text-red-600">Whole Child</strong> approach, ensuring that physical health, social-emotional well-being, and academic curiosity are all nurtured in parallel.
+            <p className="text-slate-600 text-lg leading-relaxed">
+              We follow the <strong className="text-red-600">Whole Child</strong> approach, ensuring physical health and academic curiosity.
             </p>
           </div>
 
-          <div className="flex-1 order-1 lg:order-2 grid grid-cols-2 gap-4 w-full">
+          <div className="flex-1 grid grid-cols-2 gap-4 w-full">
             {[
-              { title: "Safety First", img: scl7 },
-              { title: "Global Standards", img: scl6 },
-              { title: "Creative Play", img: scl8 },
-              { title: "Native Fluency", img: scl1 },
+              { title: "Safety First", key: "scl1.jpg" },
+              { title: "Global Standards", key: "scl3.JPG" },
+              { title: "Creative Play", key: "scl8.jpg" },
+              { title: "Campus Life", key: "scl7.JPG" },
             ].map((item, idx) => (
               <div key={idx} className="relative h-48 rounded-2xl overflow-hidden group shadow-md">
-                <img src={item.img} alt={item.title} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <img 
+                   src={getImg(item.key)} 
+                   alt={item.title} 
+                   className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                 <div className="absolute bottom-0 left-0 p-6">
                   <span className="text-white font-bold text-xl relative z-10">{item.title}</span>
                 </div>
@@ -179,46 +166,30 @@ export function InternationalPreschool() {
         </div>
       </section>
 
-      {/* Programs Slider */}
+      {/* Programs Slider (Remain the same) */}
       <section className="py-24 bg-slate-900 text-white overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-left mb-16">
-            <h2 className="text-4xl font-bold mb-4">Tailored Learning Programs</h2>
-            <p className="text-slate-400">Age-appropriate curriculum for every milestone.</p>
-          </div>
-
-          <div className="relative px-2">
-            <Slider {...settings}>
+           <h2 className="text-4xl font-bold mb-16">Tailored Learning Programs</h2>
+           <Slider {...settings}>
               {programs.map((program, index) => (
                 <div key={index} className="px-3 pb-10">
-                  <motion.div whileHover={{ y: -10 }} className="h-[420px] bg-white border rounded-[2.5rem] p-8 relative overflow-hidden flex flex-col">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/10 rounded-bl-full"></div>
+                  <motion.div whileHover={{ y: -10 }} className="h-[420px] bg-white border rounded-[2.5rem] p-8 relative overflow-hidden flex flex-col text-slate-900">
                     <div className="relative z-10 flex flex-col h-full">
                       <div className="inline-flex items-center gap-2 px-4 py-1 bg-black rounded-full text-xs text-white font-bold mb-6 w-fit">
                         <Star size={14} />
                         <span>{program.age}</span>
                       </div>
                       <h3 className="text-2xl text-red-600 font-bold mb-4">{program.name}</h3>
-                      <p className="text-black leading-relaxed text-sm mb-8 flex-grow">{program.focus}</p>
-                      
-                      <Button asChild variant="outline" className="w-full bg-red-600 text-white hover:bg-black hover:text-white border-none mt-auto">
-                        <a href={program.link} target="_blank" rel="noopener noreferrer">Program Details</a>
+                      <p className="text-slate-700 leading-relaxed text-sm mb-8 flex-grow">{program.focus}</p>
+                      <Button asChild className="w-full bg-red-600 text-white hover:bg-black border-none">
+                        <a href={program.link} target="_blank">Program Details</a>
                       </Button>
                     </div>
                   </motion.div>
                 </div>
               ))}
             </Slider>
-          </div>
         </div>
-      </section>
-
-      {/* Final CTA */}
-      <section className="py-24 max-w-5xl mx-auto px-4 text-center">
-        <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} className="bg-gradient-to-br from-red-600 to-black rounded-[3rem] p-16 text-white shadow-2xl relative overflow-hidden">
-          <h2 className="text-4xl font-bold mb-6">Give Your Child the Best Start</h2>
-          <p className="text-xl mb-10 text-red-50 max-w-2xl mx-auto">Admission is open for the new session. Limited seats available.</p>
-        </motion.div>
       </section>
     </div>
   );

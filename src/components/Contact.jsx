@@ -8,6 +8,10 @@ import { Textarea } from './ui/textarea';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
 
+import { API_BASE_URL } from '../apiConfig';
+
+
+
 export function Contact() {
   const [formData, setFormData] = useState({
     name: '',
@@ -97,7 +101,7 @@ export function Contact() {
     const loadingToast = toast.loading("Sending your inquiry...");
 
     try {
-      const response = await fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/contact', {
+      const response = await fetch(`${ API_BASE_URL }/api/contact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -165,8 +169,7 @@ export function Contact() {
 
               <iframe
 
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3916.457619491774!2d76.97578759999999!3d11.004251499999999!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ba8f79532fbd2a7%3A0xecfa1d86f9485eb7!2sBluestone%20Overseas%20Consultants!5e0!3m2!1sen!2sin!4v1770094924626!5m2!1sen!2sin"
-
+ src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3916.457781655861!2d76.975759!3d11.0042393!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ba8590cfca38287%3A0xc211732c4fb4db14!2sBluestone%20Group%20of%20Institutions!5e0!3m2!1sen!2sin!4v1771325952840!5m2!1sen!2sin" 
                 width="100%" height="100%" style={{ border: 0 }} allowFullScreen="" loading="lazy"
 
               ></iframe>

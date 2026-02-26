@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { Mail, Phone, ChevronLeft, ChevronRight, UserMinus, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
+import { API_BASE_URL } from '../../apiConfig';
+
+
 export function AdminLeads() {
   const [leads, setLeads] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -10,7 +13,7 @@ export function AdminLeads() {
   useEffect(() => { fetchLeads(); }, []);
 
   const fetchLeads = () => {
-    fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads')
+    fetch(`${API_BASE_URL}/api/admin/leads`)
       .then(res => res.json())
       .then(data => setLeads(Array.isArray(data) ? data : []))
       .catch(() => toast.error("Failed to load leads from server"));
@@ -78,7 +81,7 @@ export function AdminLeads() {
   const handleApprove = async (lead) => {
     const loadingToast = toast.loading(`Processing ${lead.name}...`);
     try {
-      const response = await fetch(`https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads/approve/${lead.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/leads/approve/${lead.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(lead)
@@ -93,7 +96,7 @@ export function AdminLeads() {
   const handleRemove = async (id) => {
     const loadingToast = toast.loading("Removing...");
     try {
-      const res = await fetch(`https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/api/admin/approved-leads/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setLeads(leads.filter(l => l.id !== id));
         toast.success("Enquiry removed", { id: loadingToast });

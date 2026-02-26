@@ -1,14 +1,54 @@
+"use client";
+
 import * as React from "react";
-// 1. Import useNavigate
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Briefcase, Users, TrendingUp, Award, CheckCircle2, Building, Search, FileText, UserCheck } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useNavigate } from 'react-router-dom'; 
+import { 
+  ArrowLeft, Briefcase, Users, TrendingUp, Award, CheckCircle2, 
+  Building, Search, FileText, UserCheck, Loader2 
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
-import placement from "../../assets/ocs.png";
+import { API_BASE_URL } from '../../apiConfig';
 
-export function PlacementServices() { // Removed { onBack } prop
-  // 2. Initialize the hook
+export function PlacementServices() {
   const navigate = useNavigate();
+  const [images, setImages] = useState({}); // Mapping object for alt_text
+  const [loading, setLoading] = useState(true);
+
+  // --- FETCH MEDIA FROM DATABASE ---
+  useEffect(() => {
+    const fetchPlacementMedia = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/media?category=focus`);
+        const data = await res.json();
+        const finalData = Array.isArray(data) ? data : data.data || [];
+        
+        const mappedMedia = {};
+        finalData.forEach(item => {
+          const key = item.alt_text?.trim();
+          if (key) {
+            // BASE64 COMPATIBILITY: Skip timestamp for data URIs
+            if (item.url.startsWith('data:')) {
+              mappedMedia[key] = item.url;
+            } else {
+              const fullUrl = item.url.startsWith('http') ? item.url : `${API_BASE_URL}/${item.url}`;
+              mappedMedia[key] = `${fullUrl}?v=${Date.now()}`;
+            }
+          }
+        });
+        setImages(mappedMedia);
+      } catch (err) {
+        console.error("Placement Image Fetch Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPlacementMedia();
+  }, []);
+
+  // Helper to get image by Alt Key or return placeholder
+  const getImg = (altKey) => images[altKey] || `https://placehold.co/800x600?text=Placement+${altKey}`;
 
   const features = [
     { icon: Users, title: 'Top Companies', description: 'Partnerships with 500+ leading organizations' },
@@ -24,21 +64,18 @@ export function PlacementServices() { // Removed { onBack } prop
     { icon: Building, title: 'Final Placement', desc: 'Secure your role in a top-tier organization.' }
   ];
 
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-white">
+      <Loader2 className="animate-spin text-red-600" size={48} />
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white text-slate-900">
       {/* Hero Section */}
       <section className="relative pt-24 pb-12 overflow-hidden bg-gradient-to-b from-slate-50 to-white">
-        <motion.div
-          animate={{ x: [-100, 100, -100], y: [0, 50, 0] }}
-          transition={{ duration: 20, repeat: Infinity }}
-          className="absolute top-20 right-20 w-80 h-80 bg-green-100 rounded-full filter blur-3xl opacity-40"
-        ></motion.div>
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          {/* 3. Updated onClick to use navigate('/') */}
           <motion.button
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
             onClick={() => navigate('/')}
             className="flex items-center gap-2 text-slate-600 hover:text-red-600 mb-8 group transition-colors"
           >
@@ -47,11 +84,7 @@ export function PlacementServices() { // Removed { onBack } prop
           </motion.button>
 
           <div className="grid md:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -50 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.8 }}
-            >
+            <motion.div initial={{ opacity: 0, x: -50 }} animate={{ opacity: 1, x: 0 }}>
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-full mb-6">
                 <Briefcase size={18} className="text-red-500" />
                 <span className="text-xs font-bold uppercase tracking-widest">Placement Services</span>
@@ -63,15 +96,9 @@ export function PlacementServices() { // Removed { onBack } prop
                 We bridge the gap between talented professionals and leading companies worldwide with personalized placement solutions.
               </p>
               <div className="flex flex-wrap gap-4">
-                   <Button 
-        asChild
-        className="bg-red-600 hover:bg-red-700 text-white text-lg px-8 py-7 rounded-xl shadow-lg shadow-red-200"
-      >
-        <a href="https://bluestoneplacements.com/" target="_blank" rel="noopener noreferrer">
-          Visit Our Website
-        </a>
-      </Button>
-              
+                <Button asChild className="bg-red-600 hover:bg-red-700 text-white text-lg px-8 py-7 rounded-xl shadow-lg shadow-red-200">
+                  <a href="https://bluestoneplacements.com/" target="_blank" rel="noopener noreferrer">Visit Our Website</a>
+                </Button>
                 <div className="flex items-center gap-2 text-slate-500 font-medium">
                   <CheckCircle2 className="text-green-500" />
                   <span>500+ Hiring Partners</span>
@@ -79,17 +106,14 @@ export function PlacementServices() { // Removed { onBack } prop
               </div>
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8 }}
-              className="relative"
-            >
+            {/* DYNAMIC HERO IMAGE (Search Key: placement_hero) */}
+            <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="relative">
               <div className="relative rounded-3xl overflow-hidden shadow-2xl border-8 border-white">
                 <img
-                  src={placement}
+                  src={getImg("ias3.png")} 
                   alt="Job Placement Recruitment"
                   className="w-full h-full object-cover"
+                  onError={(e) => { e.target.src = "https://placehold.co/600x450?text=Placement+Team"; }}
                 />
               </div>
             </motion.div>
@@ -99,7 +123,7 @@ export function PlacementServices() { // Removed { onBack } prop
 
       {/* Feature Grid */}
       <section className="py-20">
-        <div className="max-w-7xl p-10 rounded-3xl mx-auto bg-red-600 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl p-10 rounded-[3rem] mx-auto bg-red-600 px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {features.map((feature, index) => (
               <motion.div
@@ -114,7 +138,7 @@ export function PlacementServices() { // Removed { onBack } prop
                   <feature.icon className="text-red-600 group-hover:text-white transition-colors" size={28} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-3">{feature.title}</h3>
-                <p className="text-slate-500 leading-relaxed">{feature.description}</p>
+                <p className="text-slate-500 leading-relaxed text-sm">{feature.description}</p>
               </motion.div>
             ))}
           </div>
@@ -122,30 +146,31 @@ export function PlacementServices() { // Removed { onBack } prop
       </section>
 
       {/* Placement Journey Section */}
-      <section className="py-24 bg-white text-white overflow-hidden">
+      <section className="py-24 bg-white overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-20">
-            <h2 className="text-4xl text-black font-bold mb-4">Your Path to Employment</h2>
+            <h2 className="text-4xl text-slate-900 font-bold mb-4">Your Path to Employment</h2>
             <p className="text-slate-600">Our systematic approach to ensuring you land the perfect role.</p>
           </div>
-          
+
           <div className="relative">
             {/* Connection Line (Desktop) */}
-            <div className="hidden lg:block absolute top-12 left-0 w-full h-0.5 bg-slate-800"></div>
-            
+            <div className="hidden lg:block absolute top-12 left-0 w-full h-0.5 bg-slate-100"></div>
+
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-12 relative z-10">
               {placementSteps.map((step, idx) => (
-                <motion.div 
+                <motion.div
                   key={idx}
                   initial={{ opacity: 0, x: -20 }}
                   whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
                   transition={{ delay: idx * 0.2 }}
                   className="text-center"
                 >
-                  <div className="w-24 h-24 bg-slate-800 rounded-full border-4 border-slate-900 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-red-500/10">
+                  <div className="w-24 h-24 bg-slate-900 rounded-full border-4 border-white flex items-center justify-center mx-auto mb-6 shadow-xl relative z-10">
                     <step.icon className="text-red-500" size={36} />
                   </div>
-                  <h4 className="text-xl font-bold mb-3">{step.title}</h4>
+                  <h4 className="text-xl font-bold mb-3 text-slate-900">{step.title}</h4>
                   <p className="text-slate-500 text-sm leading-relaxed">{step.desc}</p>
                 </motion.div>
               ))}

@@ -1,16 +1,51 @@
 "use client";
 
 import * as React from "react";
-// 1. Import useNavigate
+import { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom'; 
-import { ArrowLeft, BookOpen, Award, Users, Target, CheckCircle2, Trophy, Landmark, GraduationCap, Calendar } from 'lucide-react';
+import { ArrowLeft, BookOpen, Award, Users, Target, Landmark, GraduationCap, Calendar, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
-import IAS from "../../assets/ias5.png";
+import { API_BASE_URL } from '../../apiConfig';
 
-export function IASAcademy() { // Removed { onBack } from props
-  // 2. Initialize the hook
+export function IASAcademy() {
   const navigate = useNavigate();
+  const [images, setImages] = useState({}); // Changed to object for alt_text mapping
+  const [loading, setLoading] = useState(true);
+
+  // --- FETCH IMAGES FROM DATABASE ---
+  useEffect(() => {
+    const fetchIASMedia = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/media?category=focus`);
+        const data = await res.json();
+        const finalData = Array.isArray(data) ? data : data.data || [];
+        
+        const mappedMedia = {};
+        finalData.forEach(item => {
+          const key = item.alt_text?.trim();
+          if (key) {
+            // Base64 Compatibility: Skip timestamp if it's a data URI
+            if (item.url.startsWith('data:')) {
+              mappedMedia[key] = item.url;
+            } else {
+              const fullUrl = item.url.startsWith('http') ? item.url : `${API_BASE_URL}/${item.url}`;
+              mappedMedia[key] = `${fullUrl}?v=${Date.now()}`;
+            }
+          }
+        });
+        setImages(mappedMedia);
+      } catch (err) {
+        console.error("IAS Image Fetch Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchIASMedia();
+  }, []);
+
+  // Helper to get image or fallback
+  const getImg = (altKey) => images[altKey] || "https://placehold.co/800x600?text=IAS+Image";
 
   const features = [
     { icon: Users, title: 'Expert Faculty', description: 'Mentorship from retired IAS/IPS officers and subject matter specialists.' },
@@ -26,34 +61,27 @@ export function IASAcademy() { // Removed { onBack } from props
     { title: 'Interview', desc: 'Personality development and mock interviews.' }
   ];
 
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-white">
+      <Loader2 className="animate-spin text-amber-600" size={48} />
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative pt-24 pb-20 overflow-hidden bg-gradient-to-br from-amber-50/50 via-white to-white">
-        <motion.div
-          animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }}
-          transition={{ duration: 10, repeat: Infinity }}
-          className="absolute top-0 right-0 w-[600px] h-[600px] bg-amber-100 rounded-full filter blur-[120px] -z-10"
-        ></motion.div>
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          {/* 3. Updated onClick to use navigate('/') */}
           <motion.button
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
             onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-slate-600 hover:text-red-600 mb-8 group font-medium transition-colors"
+            className="flex items-center gap-2 text-slate-600 hover:text-red-600 mb-8 group font-medium"
           >
             <ArrowLeft className="group-hover:-translate-x-1 transition-transform" />
             <span>Back to Home</span>
           </motion.button>
 
           <div className="grid md:grid-cols-2 gap-16 items-center">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-            >
+            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-amber-400 rounded-lg mb-6 shadow-xl">
                 <Landmark size={18} />
                 <span className="text-xs font-bold uppercase tracking-[0.2em]">National Excellence</span>
@@ -65,53 +93,21 @@ export function IASAcademy() { // Removed { onBack } from props
               <p className="text-xl text-slate-600 mb-10 leading-relaxed">
                 Join India's most trusted academy for UPSC preparation. We provide the strategic guidance and rigorous training needed to crack the world's toughest exam.
               </p>
-              
-              <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <Button 
-                  asChild
-                  className="bg-red-600 hover:bg-red-700 text-white text-lg px-8 py-7 rounded-xl shadow-lg shadow-red-200"
-                >
-                  <a href="https://bluestoneiasacademy.com/" target="_blank" rel="noopener noreferrer">
-                    Visit Our Website
-                  </a>
-                </Button>
-             
-              </div>
-
-              <div className="flex items-center gap-6 py-4 border-t border-slate-100">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="text-green-500" size={20} />
-                  <span className="text-sm font-semibold text-slate-700">Online & Offline</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="text-green-500" size={20} />
-                  <span className="text-sm font-semibold text-slate-700">Bilingual Batches</span>
-                </div>
-              </div>
+              <Button asChild className="bg-red-600 hover:bg-red-700 text-white text-lg px-8 py-7 rounded-xl">
+                <a href="https://bluestoneiasacademy.com/" target="_blank">Visit Our Website</a>
+              </Button>
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8 }}
-              className="relative"
-            >
+            {/* DYNAMIC IMAGE FROM DB (Mapping Key: ias_hero) */}
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="relative">
               <div className="absolute inset-0 bg-amber-500/10 rounded-[2.5rem] rotate-3 scale-105 blur-sm"></div>
               <div className="relative rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white">
                 <img
-                  src={IAS}
-                  alt="UPSC Aspirants Studying"
+                  src={getImg("tnpsc.png")} 
+                  alt="IAS Preparation"
                   className="w-full h-[550px] object-cover"
+                  onError={(e) => { e.target.src = "https://placehold.co/600x800?text=IAS+Academy"; }}
                 />
-              </div>
-              <div className="absolute -bottom-6 -left-6 bg-white p-6 rounded-2xl shadow-xl border border-slate-100 flex items-center gap-4 animate-bounce-slow">
-                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
-                  <Trophy className="text-amber-600" size={24} />
-                </div>
-                <div>
-                  <p className="text-2xl font-black text-slate-900">AIR 01</p>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-tighter">Last Year Result</p>
-                </div>
               </div>
             </motion.div>
           </div>

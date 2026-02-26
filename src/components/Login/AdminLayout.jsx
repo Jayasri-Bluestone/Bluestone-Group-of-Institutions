@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Users, LogOut, Settings, ShieldCheck, CheckCircle2, WorkflowIcon, Workflow } from 'lucide-react';
-import { FaCalendar } from 'react-icons/fa';
+import { FaCalendar, FaImage } from 'react-icons/fa';
+import { API_BASE_URL } from '../../apiConfig';
+
 
 export function AdminLayout() {
   const navigate = useNavigate();
@@ -11,7 +13,7 @@ export function AdminLayout() {
   // Fetch the count of pending leads for the sidebar badge
   useEffect(() => {
     const fetchCount = () => {
-      fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads')
+      fetch(`${API_BASE_URL}/api/admin/leads`)
         .then(res => res.json())
         .then(data => setPendingCount(data.length))
         .catch(err => console.error("Error fetching badge count:", err));
@@ -33,7 +35,7 @@ export function AdminLayout() {
     { path: '/admin/approved-leads', label: 'Leads', icon: CheckCircle2 },
      { path: '/admin/careers', label: 'Careers', icon: FaCalendar },
           { path: '/admin/applicants', label: 'Job Applicants', icon: FaCalendar },
-
+    { path: '/admin/media', label: 'Media Manager', icon: FaImage },
     { path: '/admin/settings', label: 'Settings', icon: Settings },
   ];
 

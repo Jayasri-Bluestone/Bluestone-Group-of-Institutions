@@ -1,16 +1,54 @@
 "use client";
 
 import * as React from "react";
-// 1. Import useNavigate
+import { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom'; 
-import { ArrowLeft, Languages, Globe, Users, BookOpen, Mic, Video, MessageSquare, Headphones, BarChart3 } from 'lucide-react';
+import { 
+  ArrowLeft, Globe, Users, Mic, Video, 
+  MessageSquare, Headphones, BarChart3, Loader2 
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
-import heroImage from "../../assets/ocs5.png";
+import { API_BASE_URL } from '../../apiConfig';
 
-export function LanguageHub() { // Removed { onBack } from props
-  // 2. Initialize the hook
+export function LanguageHub() {
   const navigate = useNavigate();
+  const [images, setImages] = useState({}); // Mapping object for dynamic lookup
+  const [loading, setLoading] = useState(true);
+
+  // --- FETCH MEDIA FROM DATABASE (Mapped by Alt Text) ---
+  useEffect(() => {
+    const fetchLanguageMedia = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/media?category=focus`);
+        const data = await res.json();
+        const finalData = Array.isArray(data) ? data : data.data || [];
+        
+        const mappedMedia = {};
+        finalData.forEach(item => {
+          const key = item.alt_text?.trim();
+          if (key) {
+            // BASE64 COMPATIBILITY: Skip cache-buster for data URIs
+            if (item.url.startsWith('data:')) {
+              mappedMedia[key] = item.url;
+            } else {
+              const fullUrl = item.url.startsWith('http') ? item.url : `${API_BASE_URL}/${item.url}`;
+              mappedMedia[key] = `${fullUrl}?v=${Date.now()}`;
+            }
+          }
+        });
+        setImages(mappedMedia);
+      } catch (err) {
+        console.error("Language Image Fetch Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLanguageMedia();
+  }, []);
+
+  // Helper to get image by Alt Key or return fallback
+  const getImg = (altKey) => images[altKey] || `https://placehold.co/800x600?text=Language+${altKey}`;
 
   const languages = [
     { name: 'English', flag: '🇬🇧', level: 'IELTS/TOEFL' },
@@ -30,6 +68,12 @@ export function LanguageHub() { // Removed { onBack } from props
     { icon: Video, title: 'Live Workshops', desc: 'Weekly group sessions for interactive learning.' }
   ];
 
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-white">
+      <Loader2 className="animate-spin text-red-600" size={48} />
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
@@ -41,23 +85,16 @@ export function LanguageHub() { // Removed { onBack } from props
         ></motion.div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          {/* 3. Updated onClick to use navigate('/') */}
           <motion.button
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
             onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-slate-600 hover:text-red-600 mb-8 group font-medium transition-colors"
+            className="flex items-center gap-2 text-slate-600 hover:text-red-600 mb-8 group font-medium"
           >
             <ArrowLeft className="group-hover:-translate-x-1 transition-transform" />
             <span>Back to Home</span>
           </motion.button>
 
           <div className="grid md:grid-cols-2 gap-16 items-center">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-            >
+            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-full mb-6 shadow-lg shadow-indigo-200">
                 <Globe size={18} />
                 <span className="text-xs font-bold uppercase tracking-widest">Global Communication</span>
@@ -69,40 +106,19 @@ export function LanguageHub() { // Removed { onBack } from props
               <p className="text-xl text-slate-600 mb-10 leading-relaxed">
                 Master a new language through scientific immersion. Our native coaches use interactive methods to get you speaking from day one.
               </p>
-              <div className="flex flex-wrap gap-4">
-                 <Button 
-        asChild
-        className="bg-red-600 hover:bg-red-700 text-white text-lg px-8 py-7 rounded-xl shadow-lg shadow-red-200"
-      >
-        <a href="https://www.bluestoneoverseas.com/" target="_blank" rel="noopener noreferrer">
-          Visit Our Website
-        </a>
-      </Button>
-              
-                <div className="flex items-center gap-3 px-6 py-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
-                  <div className="flex -space-x-3">
-                    {[1, 2, 3].map(i => (
-                      <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-slate-200 overflow-hidden">
-                        <img src={`https://i.pravatar.cc/100?u=${i}`} alt="Student" />
-                      </div>
-                    ))}
-                  </div>
-                  <span className="text-sm font-bold text-slate-700">5k+ Active Polyglots</span>
-                </div>
-              </div>
+              <Button asChild className="bg-red-600 hover:bg-red-700 text-white text-lg px-8 py-7 rounded-xl shadow-lg shadow-red-200">
+                <a href="https://www.bluestoneoverseas.com/" target="_blank" rel="noopener noreferrer">Visit Our Website</a>
+              </Button>
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8 }}
-              className="relative"
-            >
+            {/* DYNAMIC HERO IMAGE (Mapped by alt_text: "language_hero") */}
+            <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="relative">
               <div className="relative rounded-[2.5rem] overflow-hidden shadow-2xl z-10 border-8 border-white">
                 <img
-                 src={heroImage}
+                  src={getImg("ias3.png")}
                   alt="Language Learning Environment"
                   className="w-full h-[550px] object-cover"
+                  onError={(e) => { e.target.src = "https://placehold.co/600x550?text=Language+Hub"; }}
                 />
               </div>
               <div className="absolute -bottom-6 -right-6 w-40 h-40 bg-indigo-600 rounded-3xl -z-0 rotate-12 opacity-20 blur-2xl"></div>
@@ -110,20 +126,20 @@ export function LanguageHub() { // Removed { onBack } from props
           </div>
         </div>
       </section>
-
+      
       {/* Languages Grid */}
       <section className="py-24">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-slate-900 mb-4">Master Your Choice</h2>
-            <p className="text-slate-500">Pick a language and start your path to global fluency.</p>
+            <div className="w-20 h-1.5 bg-red-600 mx-auto rounded-full"></div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {languages.map((lang, index) => (
               <motion.div
                 key={index}
-                whileHover={{ y: -10, boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)" }}
-                className="bg-red-300 rounded-3xl p-8 border border-red-600 border-2 text-center cursor-pointer transition-all group"
+                whileHover={{ y: -10 }}
+                className="bg-red-50 rounded-3xl p-8 border border-red-200 text-center cursor-pointer transition-all group hover:shadow-xl"
               >
                 <div className="text-6xl mb-6 group-hover:scale-125 transition-transform duration-300 inline-block">{lang.flag}</div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">{lang.name}</h3>
@@ -160,15 +176,9 @@ export function LanguageHub() { // Removed { onBack } from props
             <div className="relative">
                <div className="bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-[2rem] p-8 border border-white/10 backdrop-blur-sm">
                   <div className="flex items-center gap-4 mb-8">
-                    <div className="p-3 bg-red-500 rounded-lg">
-                       <BarChart3 size={24} />
-                    </div>
-                    <div>
-                      <h4 className="font-bold">Progress Analytics</h4>
-                      <p className="text-xs text-slate-400">Track your vocabulary & grammar</p>
-                    </div>
+                    <div className="p-3 bg-red-500 rounded-lg"><BarChart3 size={24} /></div>
+                    <h4 className="font-bold">Progress Analytics</h4>
                   </div>
-                  {/* Mock progress bars */}
                   <div className="space-y-6">
                     {['Vocabulary', 'Listening', 'Speaking'].map((skill, i) => (
                       <div key={i}>
@@ -189,20 +199,6 @@ export function LanguageHub() { // Removed { onBack } from props
                </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* Final CTA */}
-      <section className="py-24 text-center">
-        <div className="max-w-3xl mx-auto px-4">
-          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-8">
-            <Headphones className="text-red-600" size={32} />
-          </div>
-          <h2 className="text-4xl font-bold text-slate-900 mb-6">Ready to break the language barrier?</h2>
-          <p className="text-slate-500 text-xl mb-10">Sign up for a free 30-minute assessment with a native tutor.</p>
-          {/* <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 text-white px-12 py-8 text-xl rounded-2xl shadow-xl shadow-indigo-100">
-            Book Free Assessment
-          </Button> */}
         </div>
       </section>
     </div>

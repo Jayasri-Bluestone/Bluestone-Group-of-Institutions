@@ -15,6 +15,8 @@ export function Footer() {
       { label: 'Contact', href: '/contact' },
       { label: 'Gallery', href: '/gallery' },
       { label: 'Careers', href: '/career' },
+            { label: 'Privacy Policy', href: '/privacy-policy' },
+
     ],
     sectors: [
       { label: 'Preschool & Education', href: 'https://bluestoneinternationalpreschool.com/' },
@@ -23,12 +25,7 @@ export function Footer() {
       { label: 'Placement Services', href: 'https://bluestoneplacements.com/' },
       { label: 'Tech Park', href: 'https://bluestonetechpark.com/' },
     ],
-    support: [
-      { label: 'Privacy Policy', href: '#' },
-      { label: 'Terms of Service', href: '#' },
-      { label: 'Cookie Policy', href: '#' },
-      { label: 'Global Compliance', href: '#' },
-    ],
+ 
   };
 
  const socialLinks = [
@@ -90,7 +87,7 @@ export function Footer() {
               value="info@bluestonegroupofinstitutions.com" 
             />
             <ContactCard 
-              href="https://maps.app.goo.gl/9iKsL99nW7ZNRo1v8" 
+              href="https://maps.app.goo.gl/S859EMpXn2gDygFH7" 
               icon={<MapPin size={18} />} 
               title="Global Headquarters" 
               value="2nd Floor, Renaissance Terrace.126 L, opp. Bishop Appasamy College, Race Course, Coimbatore 641018" 
@@ -141,11 +138,9 @@ export function Footer() {
           
           <div className="text-center md:text-right">
             <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">
-              © {new Date().getFullYear()} Bluestone Groups International.
+              © {new Date().getFullYear()} Bluestone Group of Institutions.
             </p>
-            <p className="text-slate-700 text-[9px] uppercase tracking-tighter mt-1">
-              A Multi-Sector Strategic Enterprise. Built for Excellence.
-            </p>
+          
           </div>
         </div>
       </div>

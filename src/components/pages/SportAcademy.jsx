@@ -1,16 +1,54 @@
 "use client";
 
 import * as React from "react";
-// 1. Import useNavigate
+import { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trophy, Users, Target, Activity, Flame, ShieldCheck, Heart } from 'lucide-react';
+import { 
+  ArrowLeft, Trophy, Users, Target, Activity, Flame, 
+  ShieldCheck, Heart, Loader2 
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
-import Sports from "../../assets/sport1.JPG";
+import { API_BASE_URL } from '../../apiConfig';
 
-export function SportAcademy() { // Removed { onBack } prop
-  // 2. Initialize the hook
+export function SportAcademy() {
   const navigate = useNavigate();
+  const [images, setImages] = useState({}); // Mapping object for dynamic lookup
+  const [loading, setLoading] = useState(true);
+
+  // --- FETCH MEDIA FROM DATABASE ---
+  useEffect(() => {
+    const fetchSportMedia = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/media?category=focus`);
+        const data = await res.json();
+        const finalData = Array.isArray(data) ? data : data.data || [];
+        
+        const mappedMedia = {};
+        finalData.forEach(item => {
+          const key = item.alt_text?.trim();
+          if (key) {
+            // BASE64 COMPATIBILITY: Data URIs remain untouched; regular URLs get cache-busting
+            if (item.url.startsWith('data:')) {
+              mappedMedia[key] = item.url;
+            } else {
+              const fullUrl = item.url.startsWith('http') ? item.url : `${API_BASE_URL}/${item.url}`;
+              mappedMedia[key] = `${fullUrl}?v=${Date.now()}`;
+            }
+          }
+        });
+        setImages(mappedMedia);
+      } catch (err) {
+        console.error("Sport Image Fetch Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSportMedia();
+  }, []);
+
+  // Helper to get image by Alt Key or return placeholder
+  const getImg = (altKey) => images[altKey] || `https://placehold.co/800x600?text=Sports+${altKey}`;
 
   const activities = [
     { 
@@ -33,6 +71,12 @@ export function SportAcademy() { // Removed { onBack } prop
     }
   ];
 
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-white">
+      <Loader2 className="animate-spin text-red-600" size={48} />
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
@@ -44,10 +88,7 @@ export function SportAcademy() { // Removed { onBack } prop
         ></motion.div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          {/* 3. Updated onClick to use navigate('/') */}
           <motion.button
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
             onClick={() => navigate('/')}
             className="flex items-center gap-2 text-slate-600 hover:text-red-700 mb-8 group font-medium"
           >
@@ -56,11 +97,7 @@ export function SportAcademy() { // Removed { onBack } prop
           </motion.button>
 
           <div className="grid md:grid-cols-2 gap-16 items-center">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-            >
+            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg mb-6 shadow-lg">
                 <Trophy size={18} className="text-blue-400" />
                 <span className="text-xs font-bold uppercase tracking-widest">Bluestone Elite Sports</span>
@@ -71,29 +108,19 @@ export function SportAcademy() { // Removed { onBack } prop
               <p className="text-lg text-slate-600 mb-10 leading-relaxed max-w-lg">
                 Where elite performance meets holistic wellness. Experience world-class coaching in Cricket, Karate, and Yoga designed for the modern athlete.
               </p>
-              <div className="flex gap-4">
-                    <Button 
-                        asChild
-                        className="bg-red-600 hover:bg-red-700 text-white text-lg px-8 py-7 rounded-xl shadow-lg shadow-red-200"
-                      >
-                        <a href="https://bluestoneelitesports.com/" target="_blank" rel="noopener noreferrer">
-                          Visit Our Website
-                        </a>
-                      </Button>
-             
-              </div>
+              <Button asChild className="bg-red-600 hover:bg-red-700 text-white text-lg px-8 py-7 rounded-xl shadow-lg shadow-red-200">
+                <a href="https://bluestoneelitesports.com/" target="_blank" rel="noopener noreferrer">Visit Our Website</a>
+              </Button>
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="relative"
-            >
+            {/* DYNAMIC HERO IMAGE (Search Key: sport_hero) */}
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="relative">
               <div className="absolute inset-0 bg-blue-600 rounded-3xl rotate-3 scale-105 opacity-10"></div>
               <img
-                src={Sports}
+                src={getImg("sport1.JPG")} 
                 alt="Elite Athlete Training"
                 className="relative rounded-3xl shadow-2xl z-10 w-full h-[500px] object-cover"
+                onError={(e) => { e.target.src = "https://placehold.co/600x500?text=Sport+Academy"; }}
               />
             </motion.div>
           </div>
@@ -112,7 +139,7 @@ export function SportAcademy() { // Removed { onBack } prop
             <motion.div
               key={index}
               whileHover={{ y: -10 }}
-              className="group bg-white border border-red-600  border-4 p-10 rounded-3xl shadow-sm hover:shadow-2xl hover:shadow-blue-900/5 transition-all"
+              className="group bg-white border-4 border-red-600 p-10 rounded-3xl shadow-sm hover:shadow-2xl hover:shadow-blue-900/5 transition-all"
             >
               <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${item.color} flex items-center justify-center mb-8 shadow-lg group-hover:scale-110 transition-transform`}>
                 <item.icon className="text-white" size={32} />
@@ -121,15 +148,12 @@ export function SportAcademy() { // Removed { onBack } prop
               <p className="text-slate-500 leading-relaxed mb-6">
                 {item.desc}
               </p>
-              {/* <div className="flex items-center text-blue-600 font-bold cursor-pointer group-hover:gap-2 transition-all">
-                Learn More <span>→</span>
-              </div> */}
             </motion.div>
           ))}
         </div>
       </section>
 
-      {/* Highlight Section: Why Bluestone? */}
+      {/* Advantage Section */}
       <section className="bg-slate-900 py-24 text-white overflow-hidden relative">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center gap-16">
           <div className="flex-1">
@@ -154,20 +178,24 @@ export function SportAcademy() { // Removed { onBack } prop
           </div>
           <div className="flex-1 grid grid-cols-2 gap-4">
             <div className="space-y-4">
-              <div className="h-48 bg-slate-800 rounded-2xl animate-pulse"></div>
+              <div className="h-48 bg-slate-800 rounded-2xl border border-slate-700 flex items-center justify-center">
+                 <Trophy className="text-slate-700" size={48} />
+              </div>
               <div className="h-64 bg-red-600/20 rounded-2xl flex items-center justify-center border border-red-500/30">
                 <span className="text-5xl font-black opacity-20">ELITE</span>
               </div>
             </div>
             <div className="space-y-4 pt-8">
-              <div className="h-64 bg-slate-800 rounded-2xl">
-                 <img 
+              <div className="h-64 bg-slate-800 rounded-2xl overflow-hidden">
+                <img 
                   src="https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&q=80&w=400" 
-                  alt="Yoga at Bluestone" 
-                  className="w-full h-full object-cover rounded-2xl opacity-60"
+                  alt="Yoga Performance" 
+                  className="w-full h-full object-cover opacity-60"
                 />
               </div>
-              <div className="h-48 bg-slate-800 rounded-2xl"></div>
+              <div className="h-48 bg-slate-800 rounded-2xl border border-slate-700 flex items-center justify-center">
+                <Users className="text-slate-700" size={48} />
+              </div>
             </div>
           </div>
         </div>

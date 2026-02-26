@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Mail, Phone, ChevronLeft, ChevronRight, UserMinus, RotateCcw, ShieldCheck, Search, AlertCircle, Clock } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import { API_BASE_URL } from '../../apiConfig';
 
 export function ApprovedLeads() {
   const [approvedLeads, setApprovedLeads] = useState([]);
@@ -15,7 +16,7 @@ export function ApprovedLeads() {
 
   const fetchApprovedLeads = () => {
     setLoading(true);
-    fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/approved-leads')
+    fetch(`${API_BASE_URL}/api/admin/approved-leads`)
       .then(res => res.json())
       .then(data => {
         setApprovedLeads(Array.isArray(data) ? data : []);
@@ -89,7 +90,7 @@ export function ApprovedLeads() {
   const handleRemove = async (id) => {
     const tid = toast.loading("Deleting...");
     try {
-      const response = await fetch(`https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/approved-leads/${id}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE_URL}/api/admin/approved-leads/${id}`, { method: 'DELETE' });
       if (response.ok) {
         setApprovedLeads(prev => prev.filter(l => l.id !== id));
         toast.success("Lead permanently removed", { id: tid });
@@ -102,7 +103,7 @@ export function ApprovedLeads() {
   const handleRevoke = async (lead) => {
     const tid = toast.loading("Moving back to Pending...");
     try {
-      const response = await fetch(`https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/approved-leads/revoke/${lead.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/approved-leads/revoke/${lead.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(lead)

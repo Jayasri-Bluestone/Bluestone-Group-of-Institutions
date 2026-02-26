@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, ArrowRight } from 'lucide-react';
+import { API_BASE_URL } from '../../apiConfig';
 
 export function AdminLogin() {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
@@ -9,7 +10,7 @@ export function AdminLogin() {
   const handleLogin = async (e) => {
     e.preventDefault();
     // Connect to your Node.js /api/admin/login route
-    const response = await fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/login', {
+    const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(credentials),

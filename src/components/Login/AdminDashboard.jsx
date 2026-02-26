@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, TrendingUp, Briefcase, Clock, User, FileText, Loader2 } from 'lucide-react';
 
+import { API_BASE_URL } from '../../apiConfig';
+
+
 export function AdminDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -21,9 +24,9 @@ export function AdminDashboard() {
         setLoading(true);
         // Matching your Express routes: /leads, /applications, and /jobs
         const [leadsRes, appsRes, jobsRes] = await Promise.all([
-          fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/leads'),
-          fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/admin/applications'),
-          fetch('https://bluestoneinternationalpreschool.com/bgoi_api/api/jobs')
+          fetch(`${API_BASE_URL}/api/admin/leads`),
+          fetch(`${API_BASE_URL}/api/admin/applications`),
+          fetch(`${API_BASE_URL}/api/jobs`)
         ]);
 
         const leads = await leadsRes.json();
