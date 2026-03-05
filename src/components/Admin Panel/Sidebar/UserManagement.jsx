@@ -1,17 +1,22 @@
-import React, { useState, useEffect } from "react";
-import { Toaster, toast } from "react-hot-toast";
+import React, { useState, useEffect, useCallback } from "react";
+import { toast } from "react-hot-toast";
 import {
-  UserPlus, Mail, Phone, Trash2, Edit, Save, X, ShieldCheck, 
-  Search, Loader2, ChevronLeft, ChevronRight, History
+  UserPlus, Mail, Phone, Trash2, Edit, Save, X, ShieldCheck,
+  Search, Loader2, History, RefreshCcw
 } from "lucide-react";
 import LoadingScreen from "../Layout/LoadingScreen";
+import Pagination from "../Layout/Pagination";
+import { confirmToast } from "../../../utils/toastConfirm";
+import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 
 const UserManagement = () => {
   const [staff, setStaff] = useState([]);
   const [dynamicDomains, setDynamicDomains] = useState([]);
+  const [roleHierarchy, setRoleHierarchy] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   
   // PAGINATION STATE
   const [currentPage, setCurrentPage] = useState(1);
@@ -23,34 +28,50 @@ const UserManagement = () => {
   const [userHistory, setUserHistory] = useState([]);
   const [historyUserName, setHistoryUserName] = useState("");
   const [formData, setFormData] = useState({
-    name: "", email: "", phone: "", domain: "", role: "Staff", password: "",
+    name: "", email: "", phone: "", domain: "", role: "Staff", designation: "", password: "",
   });
+  const AUTO_REFRESH_MS = 30000;
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
       const headers = { Authorization: `Bearer ${token}` };
-      const [staffRes, domainRes] = await Promise.all([
-        fetch("http://localhost:5005/api/staff-directory", { headers }),
-        fetch("http://localhost:5005/api/master/domains", { headers }),
+      const [staffRes, domainRes, hierarchyRes] = await Promise.all([
+        fetch(`${API_BASE_URL_PORTAL}/api/staff-directory`, { headers }),
+        fetch(`${API_BASE_URL_PORTAL}/api/master/domains`, { headers }),
+        fetch(`${API_BASE_URL_PORTAL}/api/master/user-hierarchy`, { headers }),
       ]);
       if (staffRes.ok) setStaff(await staffRes.json());
       if (domainRes.ok) setDynamicDomains(await domainRes.json());
-    } catch (err) {
+      if (hierarchyRes.ok) setRoleHierarchy(await hierarchyRes.json());
+    } catch {
       toast.error("Connection failed");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchData();
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [fetchData]);
 
   // --- LOGIC: FILTERING ---
   const filteredStaff = staff.filter(user => 
-    (user.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.domain || "").toLowerCase().includes(searchTerm.toLowerCase())
+    (
+      (user.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.domain || "").toLowerCase().includes(searchTerm.toLowerCase())
+    ) &&
+    (
+      statusFilter === "all" ||
+      (statusFilter === "active" && Number(user.is_active) === 1) ||
+      (statusFilter === "inactive" && Number(user.is_active) === 0)
+    )
   );
 
   // --- LOGIC: PAGINATION CALCULATIONS ---
@@ -86,12 +107,6 @@ const UserManagement = () => {
     }
   }, [filteredStaff.length, itemsPerPageValue]);
 
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-    }
-  };
-
   // --- API HANDLERS (handleAddUser, handleDelete, handleSaveEdit remain same) ---
   const validate = (data, isNewUser = false) => {
     if (!data.name || data.name.length < 3) return "Name must be 3+ chars";
@@ -104,53 +119,111 @@ const UserManagement = () => {
     e.preventDefault();
     const error = validate(formData, true);
     if (error) return toast.error(error);
-    const isHighLevel = ["Main Admin", "MD", "GM"].includes(formData.role);
+    const confirmed = await confirmToast(`Create account for ${formData.name}?`, "Create");
+    if (!confirmed) return;
+    const roleTier = roleHierarchy.find((r) => r.role_name === formData.role)?.tier;
+    const isHighLevel = roleTier ? roleTier === "SUPER_ADMIN" : ["Main Admin", "MD", "GM"].includes(formData.role);
     const submissionData = { ...formData, domain: isHighLevel ? "All" : formData.domain };
     const loadToast = toast.loading("Registering staff...");
     try {
-      const res = await fetch("http://localhost:5005/api/auth/register", {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify(submissionData),
       });
       if (res.ok) {
         toast.success("Account created!", { id: loadToast });
-        setFormData({ name: "", email: "", phone: "", domain: "", role: "Staff", password: "" });
+        setFormData({ name: "", email: "", phone: "", domain: "", role: "Staff", designation: "", password: "" });
         fetchData();
       } else {
         const errData = await res.json();
         toast.error(errData.msg || "Failed", { id: loadToast });
       }
-    } catch (err) { toast.error("Server error", { id: loadToast }); }
+    } catch { toast.error("Server error", { id: loadToast }); }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete permanently?")) return;
+    const confirmed = await confirmToast("Delete this staff account?", "Delete");
+    if (!confirmed) return;
+
+    const loadToast = toast.loading("Deleting staff...");
     try {
-      const res = await fetch(`http://localhost:5005/api/staff/${id}`, {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
-      if (res.ok) { toast.success("Staff deleted"); fetchData(); }
-    } catch (err) { toast.error("Delete failed"); }
+      if (res.ok) {
+        toast.success("Staff deleted successfully", { id: loadToast });
+        fetchData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.msg || "Delete failed", { id: loadToast });
+      }
+    } catch {
+      toast.error("Delete failed", { id: loadToast });
+    }
+  };
+
+  const handleToggleStatus = async (user) => {
+    const nextStatus = Number(user.is_active) === 1 ? 0 : 1;
+    const nextStatusLabel = nextStatus === 1 ? "Active" : "Inactive";
+    const confirmed = await confirmToast(
+      `Set ${user.name} as ${nextStatusLabel}?`,
+      "Confirm"
+    );
+    if (!confirmed) return;
+
+    const actionLabel = nextStatus === 1 ? "Activating" : "Deactivating";
+    const loadToast = toast.loading(`${actionLabel} user...`);
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff/${user.id}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ is_active: nextStatus }),
+      });
+      if (res.ok) {
+        toast.success(`User ${nextStatus === 1 ? "activated" : "deactivated"}`, { id: loadToast });
+        fetchData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.msg || "Status update failed", { id: loadToast });
+      }
+    } catch {
+      toast.error("Status update failed", { id: loadToast });
+    }
   };
 
   const handleSaveEdit = async (id) => {
     const error = validate(editFormData);
     if (error) return toast.error(error);
+    const confirmed = await confirmToast(`Update account for ${editFormData.name}?`, "Update");
+    if (!confirmed) return;
+    const loadToast = toast.loading("Updating staff...");
     try {
-      const res = await fetch(`http://localhost:5005/api/staff/${id}`, {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify(editFormData),
       });
-      if (res.ok) { toast.success("Updated"); setEditingId(null); fetchData(); }
-    } catch (err) { toast.error("Update failed"); }
+      if (res.ok) {
+        toast.success("Staff updated", { id: loadToast });
+        setEditingId(null);
+        fetchData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.msg || "Update failed", { id: loadToast });
+      }
+    } catch {
+      toast.error("Update failed", { id: loadToast });
+    }
   };
 
   const fetchUserHistory = async (id, name) => {
     try {
-      const res = await fetch(`http://localhost:5005/api/history/users/${id}`, {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/history/users/${id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (!res.ok) {
@@ -168,7 +241,7 @@ const UserManagement = () => {
       setUserHistory(Array.isArray(rows) ? rows : []);
       setHistoryUserName(name);
       setShowHistoryModal(true);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load history");
     }
   };
@@ -177,10 +250,10 @@ const UserManagement = () => {
     return <LoadingScreen message="Loading staff directory..." fullPage={false} />;
   }
 
+  const activeHierarchy = roleHierarchy.filter((r) => Number(r.is_active) === 1);
+
   return (
     <div className="p-6 bg-slate-50 min-h-screen space-y-8">
-      <Toaster position="top-center" />
-      
       {/* 1. ONBOARDING FORM (Simplified for brevity) */}
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
         <h2 className="text-xl font-black text-slate-800 uppercase mb-6 flex items-center gap-2">
@@ -191,15 +264,30 @@ const UserManagement = () => {
           <input className="p-2.5 border rounded-xl text-sm" type="email" placeholder="Email" required value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
           <input className="p-2.5 border rounded-xl text-sm" placeholder="Phone" required value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
           <select className="p-2.5 border rounded-xl text-sm" value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })}>
-            <option value="Staff">Staff</option>
-            <option value="TL">Team Lead</option>
-            <option value="GM">GM</option>
-            <option value="Main Admin">Admin</option>
+            {activeHierarchy.length > 0 ? (
+              activeHierarchy.map((r) => (
+                <option key={r.id} value={r.role_name}>{r.role_name}</option>
+              ))
+            ) : (
+              <>
+                <option value="Staff">Staff</option>
+                <option value="TL">Team Lead</option>
+                <option value="GM">GM</option>
+                <option value="MD">MD</option>
+                <option value="Main Admin">Admin</option>
+              </>
+            )}
           </select>
+          <input
+            className="p-2.5 border rounded-xl text-sm"
+            placeholder="Designation (optional)"
+            value={formData.designation}
+            onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+          />
           <select 
             className="p-2.5 border rounded-xl text-sm"
-            disabled={["Main Admin", "MD", "GM"].includes(formData.role)}
-            value={["Main Admin", "MD", "GM"].includes(formData.role) ? "All" : formData.domain}
+            disabled={(roleHierarchy.find((r) => r.role_name === formData.role)?.tier || "") === "SUPER_ADMIN" || ["Main Admin", "MD", "GM"].includes(formData.role)}
+            value={((roleHierarchy.find((r) => r.role_name === formData.role)?.tier || "") === "SUPER_ADMIN" || ["Main Admin", "MD", "GM"].includes(formData.role)) ? "All" : formData.domain}
             onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
           >
             <option value="">Select Domain</option>
@@ -238,13 +326,31 @@ const UserManagement = () => {
       </span>
     </div>
 
-    <div className="relative">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-      <input 
-        type="text" placeholder="Search..." 
-        className="pl-9 pr-4 py-2 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-64"
-        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-      />
+    <div className="flex items-center gap-2">
+      <select
+        value={statusFilter}
+        onChange={(e) => setStatusFilter(e.target.value)}
+        className="bg-white border border-slate-200 rounded-lg px-2 py-2 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="all">All</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+      </select>
+      <button
+        onClick={fetchData}
+        className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+        title="Refresh Table"
+      >
+        <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
+      </button>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+        <input 
+          type="text" placeholder="Search..." 
+          className="pl-9 pr-4 py-2 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-64"
+          value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
     </div>
   </div>
   
@@ -253,8 +359,13 @@ const UserManagement = () => {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b">
               <tr>
-                <th className="p-4">Member</th>
+                 <th className="p-4">User ID</th>
+
+                <th className="p-4">User Name</th>
                 <th className="p-4">Role / Domain</th>
+                 <th className="p-4">Contact Details</th>
+                <th className="p-4 text-center">Status</th>
+
                 <th className="p-4 text-center">Actions</th>
               </tr>
             </thead>
@@ -262,9 +373,24 @@ const UserManagement = () => {
               {currentItems.map((user) => (
                 <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
                   {editingId === user.id ? (
-                    <EditRow editFormData={editFormData} setEditFormData={setEditFormData} dynamicDomains={dynamicDomains} handleSaveEdit={handleSaveEdit} setEditingId={setEditingId} user={user} />
+                    <EditRow
+                      editFormData={editFormData}
+                      setEditFormData={setEditFormData}
+                      dynamicDomains={dynamicDomains}
+                      roleHierarchy={roleHierarchy}
+                      handleSaveEdit={handleSaveEdit}
+                      setEditingId={setEditingId}
+                      user={user}
+                    />
                   ) : (
-                    <DisplayRow user={user} setEditingId={setEditingId} setEditFormData={setEditFormData} handleDelete={handleDelete} fetchUserHistory={fetchUserHistory} />
+                    <DisplayRow
+                      user={user}
+                      setEditingId={setEditingId}
+                      setEditFormData={setEditFormData}
+                      handleDelete={handleDelete}
+                      fetchUserHistory={fetchUserHistory}
+                      handleToggleStatus={handleToggleStatus}
+                    />
                   )}
                 </tr>
               ))}
@@ -275,56 +401,14 @@ const UserManagement = () => {
           )}
         </div>
 
-        {/* PAGINATION CONTROLS */}
-        <div className="p-4 border-t flex items-center justify-between bg-slate-50/30">
-          <div className="text-xs text-slate-500 font-medium">
-            Page {currentPage} of {totalPages || 1}
-          </div>
-          <div className="hidden md:flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Show</span>
-            <select
-              value={itemsPerPageValue}
-              onChange={(e) => handleItemsPerPageChange(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-              className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value="all">Show All</option>
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="p-2 border rounded-lg hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            
-            {/* Simple Page Numbers */}
-            {[...Array(totalPages)].map((_, i) => (
-              <button
-                key={i + 1}
-                onClick={() => handlePageChange(i + 1)}
-                className={`w-8 h-8 text-xs font-bold rounded-lg transition-all ${
-                  currentPage === i + 1 ? "bg-blue-600 text-white" : "hover:bg-white border"
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-
-            <button 
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages || totalPages === 0}
-              className="p-2 border rounded-lg hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
+        <Pagination
+          stats={{ currentPage, totalPages: totalPages || 1 }}
+          onPageChange={(newPage) => setCurrentPage(newPage)}
+          pageSize={itemsPerPage}
+          pageSizeValue={itemsPerPageValue}
+          onPageSizeChange={handleItemsPerPageChange}
+          pageSizeOptions={[10, 20, 50, 100, 'all']}
+        />
       </div>
 
       {showHistoryModal && (
@@ -363,20 +447,49 @@ const UserManagement = () => {
 
 // --- SUB-COMPONENTS ---
 
-const DisplayRow = ({ user, setEditingId, setEditFormData, handleDelete, fetchUserHistory }) => (
+const DisplayRow = ({ user, setEditingId, setEditFormData, handleDelete, fetchUserHistory, handleToggleStatus }) => (
   <>
+      <td className="p-4 font-bold text-slate-700">{user.id}</td>
     <td className="p-4 font-bold text-slate-700">{user.name}</td>
     <td className="p-4">
       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 uppercase">{user.role}</span>
+      {user.designation ? <span className="ml-2 text-slate-500 text-xs font-semibold">{user.designation}</span> : null}
       <span className="ml-2 text-slate-400 text-xs">{user.domain}</span>
     </td>
     <td className="p-4 text-xs text-slate-500">
       <div>{user.email}</div>
       <div>{user.phone}</div>
     </td>
+    <td className="p-4 text-center">
+      <div className="inline-flex items-center gap-2">
+        <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${Number(user.is_active) === 1 ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+          {Number(user.is_active) === 1 ? "Active" : "Inactive"}
+        </span>
+        <button
+          type="button"
+          onClick={() => handleToggleStatus(user)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${Number(user.is_active) === 1 ? "bg-emerald-500" : "bg-slate-300"}`}
+          title={Number(user.is_active) === 1 ? "Set Inactive" : "Set Active"}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${Number(user.is_active) === 1 ? "translate-x-6" : "translate-x-1"}`}
+          />
+        </button>
+      </div>
+    </td>
     <td className="p-4">
       <div className="flex justify-center gap-2">
-        <button onClick={() => { setEditingId(user.id); setEditFormData({ ...user, password: "" }); }} className="p-2 text-slate-400 hover:text-blue-600"><Edit size={16} /></button>
+        <button
+          onClick={async () => {
+            const confirmed = await confirmToast(`Edit account for ${user.name}?`, "Edit");
+            if (!confirmed) return;
+            setEditingId(user.id);
+            setEditFormData({ ...user, password: "" });
+          }}
+          className="p-2 text-slate-400 hover:text-blue-600"
+        >
+          <Edit size={16} />
+        </button>
         <button onClick={() => fetchUserHistory(user.id, user.name)} className="p-2 text-slate-400 hover:text-emerald-600"><History size={16} /></button>
         <button onClick={() => handleDelete(user.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
       </div>
@@ -385,8 +498,11 @@ const DisplayRow = ({ user, setEditingId, setEditFormData, handleDelete, fetchUs
 );
 
 
-const EditRow = ({ editFormData, setEditFormData, dynamicDomains, handleSaveEdit, setEditingId, user }) => (
+const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy, handleSaveEdit, setEditingId, user }) => (
   <>
+    {/* User ID */}
+    <td className="p-4 font-bold text-slate-700">{user.id}</td>
+
     {/* Name & Email Column */}
     <td className="p-4 space-y-2">
       <input 
@@ -407,8 +523,28 @@ const EditRow = ({ editFormData, setEditFormData, dynamicDomains, handleSaveEdit
     <td className="p-4">
       <div className="flex flex-col gap-2">
         <select className="border p-2 rounded-lg text-xs" value={editFormData.role} onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value })}>
-          <option value="Staff">Staff</option><option value="TL">TL</option><option value="GM">GM</option><option value="MD">MD</option><option value="Main Admin">Admin</option>
+          {roleHierarchy.filter((r) => Number(r.is_active) === 1).length > 0 ? (
+            roleHierarchy
+              .filter((r) => Number(r.is_active) === 1)
+              .map((r) => (
+                <option key={r.id} value={r.role_name}>{r.role_name}</option>
+              ))
+          ) : (
+            <>
+              <option value="Staff">Staff</option>
+              <option value="TL">TL</option>
+              <option value="GM">GM</option>
+              <option value="MD">MD</option>
+              <option value="Main Admin">Admin</option>
+            </>
+          )}
         </select>
+        <input
+          className="border p-2 rounded-lg text-xs"
+          placeholder="Designation"
+          value={editFormData.designation || ""}
+          onChange={(e) => setEditFormData({ ...editFormData, designation: e.target.value })}
+        />
         <select className="border p-2 rounded-lg text-xs" value={editFormData.domain} onChange={(e) => setEditFormData({ ...editFormData, domain: e.target.value })}>
           <option value="All">All</option>
           {dynamicDomains.map((d) => ( <option key={d.id} value={d.name}>{d.name}</option> ))}
@@ -431,6 +567,13 @@ const EditRow = ({ editFormData, setEditFormData, dynamicDomains, handleSaveEdit
         value={editFormData.password || ""} 
         onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })} 
       />
+    </td>
+
+    {/* Status Placeholder (not editable in row-edit mode) */}
+    <td className="p-4 text-center">
+      <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${Number(user.is_active) === 1 ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+        {Number(user.is_active) === 1 ? "Active" : "Inactive"}
+      </span>
     </td>
 
     {/* Actions */}

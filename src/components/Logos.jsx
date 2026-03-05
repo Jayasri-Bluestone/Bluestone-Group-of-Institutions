@@ -136,7 +136,7 @@ export function Logos() {
         </motion.div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         :global(.slick-track) {
           display: flex !important;
           align-items: center;

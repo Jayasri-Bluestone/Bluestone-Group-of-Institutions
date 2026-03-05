@@ -68,7 +68,7 @@ export function Hero() {
           >
             <span className="inline-flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur-md border-2 border-red-200 rounded-full text-red-700 shadow-lg">
               <Sparkles className="w-4 h-4" />
-              <span className="font-semibold">Welcome to Bluestone Groups</span>
+              <span className="font-semibold">Welcome to Bluestone Group of Institutions</span>
             </span>
           </motion.div>
 
@@ -90,7 +90,7 @@ export function Hero() {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="text-xl sm:text-2xl text-gray-700 mb-8 leading-relaxed"
           >
-            Bluestone Groups is a premier business conglomerate committed to excellence, innovation, and sustainable growth across diverse industries.
+            Bluestone Group of Institutions is a premier business conglomerate committed to excellence, innovation, and sustainable growth across diverse industries.
           </motion.p>
 
           <motion.div
@@ -144,7 +144,7 @@ export function Hero() {
         </div>
       </motion.div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes blob {
           0%, 100% { transform: translate(0, 0) scale(1); }
           33% { transform: translate(30px, -50px) scale(1.1); }

@@ -217,13 +217,18 @@ export default function App() {
                   <Route path="/" element={<Dashboard user={auth.user} />} />
                   <Route path="/domain/:slug" element={<DomainResolver user={auth.user} />} />
 
-                  {['Main Admin', 'TL'].includes(auth.user.role) && (
+                  {['Main Admin', 'MD', 'GM', 'TL'].includes(auth.user.role) && (
                     <Route path="/live-feed" element={<LiveFeedManager user={auth.user} />} />
+                  )}
+
+                  {['Main Admin', 'MD', 'GM'].includes(auth.user.role) && (
+                    <>
+                      <Route path="/user-management" element={<UserManagement user={auth.user} />} />
+                    </>
                   )}
 
                   {auth.user.role === 'Main Admin' && (
                     <>
-                      <Route path="/user-management" element={<UserManagement user={auth.user} />} />
                       <Route path="/master" element={<MasterManagement user={auth.user} />} />
                     </>
                   )}

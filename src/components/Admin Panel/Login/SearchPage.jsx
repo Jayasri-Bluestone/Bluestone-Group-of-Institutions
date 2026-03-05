@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Mail, Phone, Calendar, UserCheck } from 'lucide-react';
+import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 
 const SearchPage = () => {
     const [results, setResults] = useState([]);
@@ -17,7 +18,7 @@ const SearchPage = () => {
     const fetchResults = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`http://localhost:5005/api/search/global?q=${query}`, {
+            const res = await fetch(`${API_BASE_URL_PORTAL}/api/search/global?q=${query}`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             const data = await res.json();
@@ -72,3 +73,4 @@ const SearchPage = () => {
 };
 
 export default SearchPage;
+

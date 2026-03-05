@@ -4,3 +4,8 @@ const isLocalhost = window.location.hostname === "localhost" || window.location.
 export const API_BASE_URL = 
 //"http://localhost:5000";
   "https://bluestoneinternationalpreschool.com/bgoi_api";
+
+  
+export const API_BASE_URL_PORTAL = 
+"http://localhost:5005";
+//  "https://bluestoneinternationalpreschool.com/bgoi_portal";

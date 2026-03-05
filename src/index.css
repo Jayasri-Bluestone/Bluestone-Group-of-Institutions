@@ -1,1 +1,112 @@
 @import "tailwindcss";
+
+/* Portal-only visual refresh: warm brand gradient + high-contrast text */
+.portal-theme {
+  --portal-bg-1: #fffaf5;
+  --portal-ink: #1f2937;
+  --portal-soft-ink: #475569;
+  --portal-brand: #dc2626;
+  --portal-brand-2: #f97316;
+  --portal-brand-3: #f59e0b;
+  --portal-surface: rgba(255, 255, 255, 0.9);
+  color: var(--portal-ink);
+}
+
+.portal-theme .portal-content {
+  background:
+    radial-gradient(circle at 8% 8%, rgba(249, 115, 22, 0.12), transparent 35%),
+    radial-gradient(circle at 92% 0%, rgba(220, 38, 38, 0.12), transparent 30%),
+    linear-gradient(145deg, var(--portal-bg-1), var(--portal-bg-2));
+}
+
+.portal-theme .bg-white {
+  background-color: var(--portal-surface) !important;
+  backdrop-filter: blur(4px);
+}
+
+.portal-theme .shadow-sm,
+.portal-theme .shadow,
+.portal-theme .shadow-md,
+.portal-theme .shadow-lg {
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.08) !important;
+}
+
+.portal-theme .text-slate-900,
+.portal-theme .text-slate-800,
+.portal-theme .text-slate-700,
+.portal-theme .text-slate-600 {
+  color: var(--portal-ink) !important;
+}
+
+.portal-theme .text-slate-500,
+.portal-theme .text-slate-400 {
+  color: var(--portal-soft-ink) !important;
+}
+
+.portal-theme .border-slate-200,
+.portal-theme .border-slate-300,
+.portal-theme .border-slate-100,
+.portal-theme .border-gray-200 {
+  border-color: rgba(220, 38, 38, 0.18) !important;
+}
+
+.portal-theme .bg-slate-50,
+.portal-theme .bg-gray-50 {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+}
+
+/* Replace common blue accents with brand palette */
+.portal-theme .text-blue-500,
+.portal-theme .text-blue-600,
+.portal-theme .text-blue-700,
+.portal-theme .text-indigo-500,
+.portal-theme .text-indigo-600 {
+  color: var(--portal-brand) !important;
+}
+
+.portal-theme .bg-blue-500,
+.portal-theme .bg-blue-600,
+.portal-theme .bg-blue-700,
+.portal-theme .bg-indigo-500,
+.portal-theme .bg-indigo-600 {
+  background: linear-gradient(135deg, var(--portal-brand), var(--portal-brand-2)) !important;
+  color: #fff !important;
+}
+
+.portal-theme .hover\:bg-blue-700:hover,
+.portal-theme .hover\:bg-blue-600:hover,
+.portal-theme .hover\:bg-indigo-700:hover {
+  background: linear-gradient(135deg, #b91c1c, #ea580c) !important;
+}
+
+.portal-theme .border-blue-500,
+.portal-theme .border-blue-600,
+.portal-theme .border-indigo-500 {
+  border-color: var(--portal-brand) !important;
+}
+
+.portal-theme .ring-blue-500,
+.portal-theme .focus\:ring-blue-500:focus,
+.portal-theme .focus\:ring-blue-600:focus {
+  --tw-ring-color: rgba(220, 38, 38, 0.35) !important;
+}
+
+.portal-theme table thead {
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.12), rgba(249, 115, 22, 0.12));
+}
+
+.portal-theme table tbody tr:hover {
+  background: rgba(249, 115, 22, 0.08) !important;
+}
+
+.portal-theme button,
+.portal-theme a,
+.portal-theme [role="button"] {
+  transition: all 0.2s ease;
+}
+
+.portal-theme button:hover,
+.portal-theme a:hover,
+.portal-theme [role="button"]:hover {
+  filter: saturate(1.08);
+}

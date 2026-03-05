@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import { 
   RefreshCcw, History, Mail, Phone, Calendar, 
   UserCheck, Search, Filter, X, 
@@ -7,12 +8,24 @@ import {
 } from 'lucide-react';
 import Pagination from '../Layout/Pagination';
 import LoadingScreen from '../Layout/LoadingScreen';
+import { confirmToast } from '../../../utils/toastConfirm';
+import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 
 
 const DomainPage = ({ domain, user }) => {
+    const getTier = (u) => {
+        if (u?.tier) return u.tier;
+        if (['Main Admin', 'MD', 'GM'].includes(u?.role)) return 'SUPER_ADMIN';
+        if (['TL', 'Coordinator', 'Head'].includes(u?.role)) return 'ADMIN';
+        return 'STAFF';
+    };
+    const isSuperAdmin = getTier(user) === 'SUPER_ADMIN';
+    const isAdminTier = getTier(user) === 'ADMIN' || isSuperAdmin;
+    const isStaffTier = getTier(user) === 'STAFF';
     const location = useLocation();
+    const navigate = useNavigate();
     const hasFocusedLeadRef = useRef(false);
-    const focusLeadId = location.state?.focusLeadId;
+    const focusLeadId = location.state?.focusLeadId || null;
     const [data, setData] = useState({ 
         leads: [], 
         totalPages: 1, 
@@ -21,9 +34,11 @@ const DomainPage = ({ domain, user }) => {
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [pendingOnly, setPendingOnly] = useState(false);
+    const [todayOnly, setTodayOnly] = useState(false);
     const [staffList, setStaffList] = useState([]);
+    const [viewMode, setViewMode] = useState('all');
     const [loading, setLoading] = useState(true);
-    const [editingRemarks, setEditingRemarks] = useState(null);
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [remarksHistory, setRemarksHistory] = useState([]);
     const [historyCandidate, setHistoryCandidate] = useState('');
@@ -31,57 +46,128 @@ const DomainPage = ({ domain, user }) => {
     const [pageSizeValue, setPageSizeValue] = useState(10);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedLead, setSelectedLead] = useState(null);
-    const canEditPayments = ['TL', 'MD', 'GM', 'Main Admin'].includes(user.role);
+    const [masterData, setMasterData] = useState([]);
+const [categoryFilter, setCategoryFilter] = useState('All');
+const [interestFilter, setInterestFilter] = useState('All');
+const AUTO_REFRESH_MS = 30000;
 
-    const fetchDomainData = useCallback(async (page = 1, limit = pageSize) => {
-        setLoading(true);
-        try {
-            const token = localStorage.getItem('token');
-            let url = `http://localhost:5005/api/leads?domain=${encodeURIComponent(domain)}&page=${page}&limit=${limit}`;
-            
-            if (user.role === 'Staff') {
-                url += `&assignedTo=${user.id}`; 
-            }
 
-            const res = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const result = await res.json();
-            
-            if (res.ok) {
-                const leads = user.role === 'Staff' 
-                    ? (result.leads || []).filter(l => l.assigned_to === user.id)
-                    : (result.leads || []);
+   const fetchDomainData = useCallback(async (page = 1, limit = pageSize) => {
+    setLoading(true);
 
-                setData({
-                    leads: leads,
-                    totalPages: result.totalPages || 1,
-                    page: result.page || page,
-                    total: user.role === 'Staff' ? leads.length : (result.total || 0)
-                });
-            }
-        } catch (err) {
-            console.error("Fetch failed:", err);
-        } finally {
-            setLoading(false);
+    try {
+        const token = localStorage.getItem('token');
+
+        // ✅ SUPER ADMIN → use URL domain
+        // ✅ OTHERS → force their own domain
+        const finalDomain = isSuperAdmin
+            ? domain
+            : user.domain;
+
+        const params = new URLSearchParams({
+            page: String(page),
+            limit: String(limit)
+        });
+
+        if (categoryFilter !== 'All') params.set('category', categoryFilter);
+        if (interestFilter !== 'All') params.set('interest', interestFilter);
+        if (statusFilter !== 'All') params.set('status', statusFilter);
+        if (searchTerm.trim()) params.set('search', searchTerm.trim());
+
+        const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
+
+        const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.status === 403) {
+            console.error("❌ Access denied");
+            return;
         }
-    }, [domain, pageSize, user.role, user.id]);
+
+        const result = await res.json();
+
+        if (res.ok) {
+            const pagination = result.pagination || {};
+
+            setData({
+                leads: result.leads || [],
+                totalPages: pagination.totalPages || 1,
+                page: pagination.currentPage || page,
+                total: pagination.total || 0
+            });
+        }
+
+    } catch (err) {
+        console.error("Fetch failed:", err);
+    } finally {
+        setLoading(false);
+    }
+}, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm]);
+
+useEffect(() => {
+    if (!isSuperAdmin) {
+        if (domain !== user.domain) {
+            navigate(`/portal/domain/${user.domain}`);
+        }
+    }
+}, [domain, user, navigate, isSuperAdmin]);
+
+
+const fetchStaff = useCallback(async () => {
+    if (!isAdminTier) return;
+    try {
+        const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff-list`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        if (res.ok) setStaffList(await res.json());
+    } catch (err) { 
+        console.error(err); 
+    }
+}, [isAdminTier]);
+
+    useEffect(() => {
+        fetchDomainData();
+        fetchStaff();
+    }, [fetchDomainData, fetchStaff]);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            fetchDomainData(data.page || 1, pageSize);
+        }, AUTO_REFRESH_MS);
+        return () => clearInterval(timer);
+    }, [fetchDomainData, data.page, pageSize]);
+
+const resetFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('All');
+    setCategoryFilter('All');
+    setInterestFilter('All');
+    setPendingOnly(false);
+    setTodayOnly(false);
+};
+
 
     const deleteLead = async (id) => {
-        if (!window.confirm("Are you sure you want to delete this lead? This action cannot be undone.")) return;
+        const confirmed = await confirmToast("Delete this lead?", "Delete");
+        if (!confirmed) return;
+
+        const tid = toast.loading("Deleting lead...");
         try {
-            const res = await fetch(`http://localhost:5005/api/leads/${id}`, {
+            const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             if (res.ok) {
+                toast.success("Lead deleted successfully", { id: tid });
                 fetchDomainData(data.page);
             } else {
                 const error = await res.json();
-                alert(error.message || "Delete failed");
+                toast.error(error.message || "Delete failed", { id: tid });
             }
         } catch (err) {
             console.error("Delete Error:", err);
+            toast.error("Delete failed", { id: tid });
         }
     };
 
@@ -91,8 +177,9 @@ const DomainPage = ({ domain, user }) => {
     };
 
     const saveLeadEdit = async () => {
+        const tid = toast.loading("Saving lead changes...");
         try {
-            const res = await fetch(`http://localhost:5005/api/leads/${selectedLead.id}`, {
+            const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${selectedLead.id}`, {
                 method: 'PUT',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -103,29 +190,32 @@ const DomainPage = ({ domain, user }) => {
 
             if (res.ok) {
                 setIsEditModalOpen(false);
+                toast.success("Lead updated", { id: tid });
                 fetchDomainData(data.page);
             } else {
-                alert("Failed to update lead details");
+                const error = await res.json().catch(() => ({}));
+                toast.error(error.message || error.msg || "Failed to update lead details", { id: tid });
             }
         } catch (err) {
             console.error("Update error:", err);
+            toast.error("Failed to update lead details", { id: tid });
         }
     };
 
-    const fetchStaff = useCallback(async () => {
-        if (!['TL', 'MD', 'GM', 'Main Admin'].includes(user.role)) return;
-        try {
-            const res = await fetch('http://localhost:5005/api/staff-list', {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-            });
-            if (res.ok) setStaffList(await res.json());
-        } catch (err) { console.error(err); }
-    }, [user.role]);
+
 
     useEffect(() => {
-        fetchDomainData();
-        fetchStaff();
-    }, [fetchDomainData, fetchStaff]);
+        const qp = new URLSearchParams(location.search);
+        const statusQ = qp.get('status');
+        const pendingQ = qp.get('pending');
+        const todayQ = qp.get('today');
+        const viewQ = qp.get('view');
+
+        setStatusFilter(statusQ || 'All');
+        setPendingOnly(pendingQ === '1');
+        setTodayOnly(todayQ === '1');
+        setViewMode((viewQ || 'all').toLowerCase());
+    }, [location.search]);
 
     useEffect(() => {
         if (!focusLeadId || hasFocusedLeadRef.current || data.leads.length === 0) return;
@@ -141,7 +231,7 @@ const DomainPage = ({ domain, user }) => {
 
     const updateStatus = async (leadId, newStatus) => {
         try {
-            const res = await fetch(`http://localhost:5005/api/leads/${leadId}/status`, {
+            const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/status`, {
                 method: 'PUT',
                 headers: { 
                     'Content-Type': 'application/json', 
@@ -149,53 +239,52 @@ const DomainPage = ({ domain, user }) => {
                 },
                 body: JSON.stringify({ leadId, status: newStatus })
             });
-            if (res.ok) fetchDomainData(data.page);
-        } catch (err) { console.error(err); }
-    };
-
-    const updateRemarks = async (id, remarks) => {
-        try {
-            const response = await fetch('http://localhost:5005/api/leads/remarks', {
-                method: 'PUT',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({ leadId: id, remarks })
-            });
-            if (response.ok) {
-                setData(prev => ({
-                    ...prev,
-                    leads: prev.leads.map(l => l.id === id ? { ...l, remarks } : l)
-                }));
-                setEditingRemarks(null);
+            if (res.ok) {
+                toast.success(`Status updated to ${newStatus}`);
+                fetchDomainData(data.page);
+            } else {
+                toast.error("Failed to update status");
             }
-        } catch (err) { alert("Save failed"); }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to update status");
+        }
     };
 
     const assignLead = async (leadId, staffId, staffName) => {
-        await fetch('http://localhost:5005/api/leads/assign', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-            body: JSON.stringify({ leadId, staffId, staffName })
-        });
-        fetchDomainData(data.page);
+        const tid = toast.loading("Assigning lead...");
+        try {
+            const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                body: JSON.stringify({ leadId, staffId, staffName })
+            });
+            if (res.ok) {
+                toast.success(`Assigned to ${staffName || "staff"}`, { id: tid });
+                fetchDomainData(data.page);
+            } else {
+                const error = await res.json().catch(() => ({}));
+                toast.error(error.msg || "Assignment failed", { id: tid });
+            }
+        } catch {
+            toast.error("Assignment failed", { id: tid });
+        }
     };
 
     const fetchLeadHistory = async (leadId, candidateName) => {
         try {
-            const res = await fetch(`http://localhost:5005/api/history/leads/${leadId}`, {
+            const res = await fetch(`${API_BASE_URL_PORTAL}/api/history/leads/${leadId}`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             if (!res.ok) {
                 setRemarksHistory([]);
-                alert(`History API error (${res.status}). Restart backend and try again.`);
+                toast.error(`History API error (${res.status}). Restart backend and try again.`);
                 return;
             }
             const contentType = res.headers.get('content-type') || '';
             if (!contentType.includes('application/json')) {
                 setRemarksHistory([]);
-                alert('History API did not return JSON. Check backend route.');
+                toast.error('History API did not return JSON. Check backend route.');
                 return;
             }
             setRemarksHistory(await res.json());
@@ -204,36 +293,86 @@ const DomainPage = ({ domain, user }) => {
         } catch (err) { console.error(err); }
     };
 
-    const updatePayment = async (leadId, updates) => {
-        try {
-            const res = await fetch(`http://localhost:5005/api/leads/${leadId}/payment`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify(updates)
-            });
-            if (res.ok) {
-                fetchDomainData(data.page);
-            } else {
-                const result = await res.json().catch(() => ({}));
-                alert(result.msg || result.error || 'Payment update failed');
-            }
-        } catch (err) {
-            console.error(err);
-            alert('Payment update failed');
-        }
-    };
-
     const filteredLeads = data.leads.filter(lead => {
-        const matchesSearch = 
-            lead.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            lead.phone.includes(searchTerm) ||
-            lead.email.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === 'All' || lead.status === statusFilter;
-        return matchesSearch && matchesStatus;
-    });
+    const q = searchTerm.toLowerCase();
+    const leadStatus = String(lead.status || '').trim().toLowerCase();
+    const leadPayment = String(lead.payment_status || '').trim().toLowerCase();
+
+    const matchesSearch =
+        lead.student_name.toLowerCase().includes(q) ||
+        lead.phone.includes(searchTerm) ||
+        (lead.email || '').toLowerCase().includes(q);
+
+    const matchesStatus =
+        statusFilter === 'All' || lead.status === statusFilter;
+
+    const matchesCategory =
+        categoryFilter === 'All' || lead.category === categoryFilter;
+
+    const matchesInterest =
+        interestFilter === 'All' || lead.interested_in === interestFilter;
+
+    const isPendingLead =
+        leadStatus !== 'follow up' &&
+        leadStatus !== 'enrolled' &&
+        leadStatus !== 'closed';
+
+    const matchesPending = !pendingOnly || isPendingLead;
+
+    const matchesToday = !todayOnly || (() => {
+        if (!lead.created_at) return false;
+        const leadDate = new Date(lead.created_at);
+        const now = new Date();
+        return (
+            leadDate.getFullYear() === now.getFullYear() &&
+            leadDate.getMonth() === now.getMonth() &&
+            leadDate.getDate() === now.getDate()
+        );
+    })();
+
+    const matchesViewMode = (() => {
+        if (viewMode === 'pending') return isPendingLead;
+        if (viewMode === 'invalid') return leadStatus === 'closed';
+        if (viewMode === 'payment') {
+            return leadPayment === 'paid' || leadPayment === 'partially paid' || leadPayment === 'unpaid';
+        }
+        return true;
+    })();
+
+    return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesCategory &&
+        matchesInterest &&
+        matchesPending &&
+        matchesToday &&
+        matchesViewMode
+    );
+});
+
+   
+
+const fetchMaster = useCallback(async () => {
+    try {
+        const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`);
+        const json = await res.json();
+        setMasterData(json || []);
+    } catch (err) {
+        console.error("Master fetch failed", err);
+    }
+}, []);
+
+useEffect(() => {
+    fetchMaster();
+}, [fetchMaster]);
+
+const domainMaster = masterData.find(
+    d => d.name?.toLowerCase() === domain?.toLowerCase()
+);
+
+const categories = domainMaster?.categories || [];
+
+const allValues = categories.flatMap(c => c.values || []);
 
     const enableTableScroll =
         (pageSizeValue === 'all' && filteredLeads.length > 10) ||
@@ -257,12 +396,24 @@ const DomainPage = ({ domain, user }) => {
         return <LoadingScreen message={`Loading ${domain} leads...`} fullPage={false} />;
     }
 
+   
+
+    const viewTitleMap = {
+        all: 'All Enquiry / Leads',
+        'lead-status': 'All Leads Status',
+        pending: 'All Pendings',
+        payment: 'All Payment Status',
+        invalid: 'All Invalid Enquiries',
+    };
+
+    const activeViewTitle = viewTitleMap[viewMode] || viewTitleMap.all;
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div>
                     <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl leading-none">{domain}</h2>
-                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Lead Management Console</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">{activeViewTitle}</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -282,6 +433,40 @@ const DomainPage = ({ domain, user }) => {
                         )}
                     </div>
 
+                    {/* CATEGORY FILTER */}
+<select
+    value={categoryFilter}
+    onChange={(e) => {
+        setCategoryFilter(e.target.value);
+        setInterestFilter('All');
+    }}
+    className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold"
+>
+    <option value="All">All Categories</option>
+    {categories.map(cat => (
+        <option key={cat.id} value={cat.category_name}>
+            {cat.category_name}
+        </option>
+    ))}
+</select>
+
+{/* INTEREST FILTER */}
+<select
+    value={interestFilter}
+    onChange={(e) => setInterestFilter(e.target.value)}
+    className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold"
+>
+    <option value="All">All Interests</option>
+    {categories
+        .filter(c => categoryFilter === 'All' || c.category_name === categoryFilter)
+        .flatMap(c => c.values || [])
+        .map(val => (
+            <option key={val.id} value={val.sub_value}>
+                {val.sub_value}
+            </option>
+        ))}
+</select>
+
                     <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                         <Filter size={14} className="text-slate-400" />
                         <select 
@@ -296,6 +481,13 @@ const DomainPage = ({ domain, user }) => {
                             <option value="Closed">Closed</option>
                         </select>
                     </div>
+
+                    <button
+    onClick={resetFilters}
+    className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs font-bold"
+>
+    Reset
+</button>
 
                     <button 
                         onClick={() => fetchDomainData(data.page)} 
@@ -322,8 +514,17 @@ const DomainPage = ({ domain, user }) => {
                     </select>
                     <span>Entries per page</span>
                 </div>
-                <div className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                    TOTAL: {data.total || 0} LEADS
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => fetchDomainData(data.page, pageSize)}
+                        className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                        title="Refresh Table"
+                    >
+                        <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
+                    </button>
+                    <div className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        TOTAL: {data.total || 0} LEADS
+                    </div>
                 </div>
             </div>
 
@@ -333,20 +534,14 @@ const DomainPage = ({ domain, user }) => {
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
                                 <th className="p-4 border-r border-slate-100">Candidate</th>
-                                <th className="p-4 border-r border-slate-100">Email</th>
                                 <th className="p-4 border-r border-slate-100">Phone</th>
-                                <th className="p-4 border-r border-slate-100">Course</th>
-                                <th className="p-4 border-r border-slate-100">Source</th>
+                                <th className="p-4 border-r border-slate-100">Category</th>
+                                <th className="p-4 border-r border-slate-100">Interest</th>
                                 <th className="p-4 border-r border-slate-100">
-                                    {user.role === 'Staff' ? 'Assigned By' : 'Assigned To'}
+                                    {isStaffTier ? 'Assigned By' : 'Assigned To'}
                                 </th>
                                 <th className="p-4 border-r border-slate-100">Date</th>
                                 <th className="p-4 border-r border-slate-100">Status</th>
-                                <th className="p-4 border-r border-slate-100">Payment</th>
-                                <th className="p-4 border-r border-slate-100">Total Fees</th>
-                                <th className="p-4 border-r border-slate-100">Paid Amount</th>
-                                <th className="p-4 border-r border-slate-100">Remarks</th>
-                                <th className="p-4 border-r border-slate-100 text-center">History</th>
                                 <th className="p-4 text-center">Actions</th>
                             </tr>
                         </thead>
@@ -359,20 +554,22 @@ const DomainPage = ({ domain, user }) => {
                                         focusLeadId === lead.id ? 'bg-blue-50/50 ring-1 ring-blue-200' : ''
                                     }`}
                                 >
-                                    <td className="p-4 font-bold text-slate-800 border-r border-slate-50">{lead.student_name}</td>
-                                    <td className="p-4 text-slate-600 border-r border-slate-50 text-xs">{lead.email || 'N/A'}</td>
+                                    <td className="p-4 border-r border-slate-50">
+                                        <p className="font-bold text-slate-800">{lead.student_name}</p>
+                                        <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`}</p>
+                                    </td>
                                     <td className="p-4 font-medium text-slate-600 border-r border-slate-50 text-xs">{lead.phone}</td>
-                                    <td className="p-4 border-r border-slate-50">
-                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black uppercase text-slate-600">
-                                            {lead.interested_in || 'General'}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 border-r border-slate-50">
-                                        <span className="text-[10px] font-bold text-blue-600 uppercase">{lead.source || 'Direct'}</span>
-                                    </td>
+
+                                    <td className="p-4 text-xs font-bold text-slate-60 border-slate-50 border-r">
+    {lead.category || '-'}
+</td>
+
+<td className="p-4 text-xs text-blue-600 font-bold border-slate-50 border-r">
+    {lead.interested_in || '-'}
+</td>
 
                                     <td className="p-4 border-r border-slate-50">
-                                        {user.role === 'Staff' ? (
+                                        {isStaffTier ? (
                                             <div className="flex items-center gap-2">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
                                                 <span className="text-xs font-bold text-slate-700">{lead.assigned_by_name || "System"}</span>
@@ -411,90 +608,22 @@ const DomainPage = ({ domain, user }) => {
                                         </select>
                                     </td>
 
-                                    <td className="p-4 border-r border-slate-50">
-                                        <select
-                                            value={lead.payment_status || 'Unpaid'}
-                                            disabled={!canEditPayments}
-                                            onChange={(e) => updatePayment(lead.id, { payment_status: e.target.value })}
-                                            className={`text-[10px] font-black uppercase px-2 py-1 rounded border outline-none ${canEditPayments ? 'cursor-pointer bg-indigo-50 text-indigo-700 border-indigo-100' : 'cursor-not-allowed bg-slate-100 text-slate-500 border-slate-200'}`}
-                                        >
-                                            <option value="Paid">Paid</option>
-                                            <option value="Unpaid">Unpaid</option>
-                                            <option value="Partially Paid">Partially Paid</option>
-                                        </select>
-                                    </td>
-
-                                    <td className="p-4 border-r border-slate-50">
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            defaultValue={lead.total_fees ?? 0}
-                                            disabled={!canEditPayments}
-                                            onBlur={(e) => updatePayment(lead.id, { total_fees: e.target.value })}
-                                            className={`w-24 text-xs px-2 py-1 rounded border outline-none ${canEditPayments ? 'bg-white border-slate-200 focus:ring-2 ring-blue-500/20' : 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'}`}
-                                        />
-                                    </td>
-
-                                    <td className="p-4 border-r border-slate-50">
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            defaultValue={lead.paid_amount ?? 0}
-                                            disabled={!canEditPayments}
-                                            onBlur={(e) => updatePayment(lead.id, { paid_amount: e.target.value })}
-                                            className={`w-24 text-xs px-2 py-1 rounded border outline-none ${canEditPayments ? 'bg-white border-slate-200 focus:ring-2 ring-blue-500/20' : 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'}`}
-                                        />
-                                    </td>
-
-                                    <td className="p-4 min-w-[200px] max-w-sm">
-                                        {editingRemarks?.id === lead.id ? (
-                                            <div className="flex flex-col gap-2">
-                                                <textarea
-                                                    autoFocus
-                                                    className="w-full p-2 text-xs border border-blue-300 rounded-lg outline-none ring-4 ring-blue-50"
-                                                    value={editingRemarks.remarks || ''}
-                                                    onChange={(e) => setEditingRemarks({ ...editingRemarks, remarks: e.target.value })}
-                                                />
-                                                <div className="flex gap-1">
-                                                    <button 
-                                                        onClick={() => updateRemarks(lead.id, editingRemarks.remarks)}
-                                                        className="bg-blue-600 text-white text-[10px] px-3 py-1 rounded font-black hover:bg-blue-700 transition-all"
-                                                    >
-                                                        SAVE
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => setEditingRemarks(null)}
-                                                        className="bg-slate-100 text-slate-500 text-[10px] px-3 py-1 rounded font-black hover:bg-slate-200 transition-all"
-                                                    >
-                                                        CANCEL
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div 
-                                                onClick={() => setEditingRemarks(lead)}
-                                                className="cursor-pointer min-h-[30px] flex flex-col justify-center"
-                                            >
-                                                <p className="text-xs text-slate-600 truncate max-w-[200px]">
-                                                    {lead.remarks || <span className="text-slate-300 font-bold italic">+ Add Remark</span>}
-                                                </p>
-                                            </div>
-                                        )}
-                                    </td>
-
-                                    <td className="p-4 border-r border-slate-50 text-center">
-                                        <button
-                                            onClick={() => fetchLeadHistory(lead.id, lead.student_name)}
-                                            className="inline-flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
-                                        >
-                                            <History size={10} /> VIEW
-                                        </button>
-                                    </td>
-
                                     <td className="p-4">
                                         <div className="flex items-center justify-center gap-2">
+                                            <button
+                                                onClick={() => navigate(`/portal/domain/${location.pathname.split('/').pop()}/lead/${lead.id}`)}
+                                                className="px-2 py-1 text-[9px] font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors uppercase"
+                                                title="View Details"
+                                            >
+                                                View Details
+                                            </button>
+                                            <button
+                                                onClick={() => fetchLeadHistory(lead.id, lead.student_name)}
+                                                className="inline-flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
+                                                title="History"
+                                            >
+                                                <History size={10} /> VIEW
+                                            </button>
                                             <button 
                                                 onClick={() => handleEditLead(lead)}
                                                 className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
@@ -566,12 +695,52 @@ const DomainPage = ({ domain, user }) => {
                                     />
                                 </div>
                             </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase">Category</label>
+                                    <select
+                                        className="w-full p-2 border rounded-lg text-sm bg-white"
+                                        value={selectedLead.category || ''}
+                                        onChange={(e) =>
+                                            setSelectedLead({
+                                                ...selectedLead,
+                                                category: e.target.value,
+                                                interested_in: ''
+                                            })
+                                        }
+                                    >
+                                        <option value="">Select Category</option>
+                                        {categories.map((c) => (
+                                            <option key={c.id} value={c.category_name}>
+                                                {c.category_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase">Interested In</label>
+                                    <select
+                                        className="w-full p-2 border rounded-lg text-sm bg-white"
+                                        value={selectedLead.interested_in || ''}
+                                        onChange={(e) => setSelectedLead({...selectedLead, interested_in: e.target.value})}
+                                    >
+                                        <option value="">Select Interest</option>
+                                        {categories
+                                            .find(c => c.category_name === selectedLead.category)
+                                            ?.values?.map(v => (
+                                                <option key={v.id} value={v.sub_value}>
+                                                    {v.sub_value}
+                                                </option>
+                                            ))}
+                                    </select>
+                                </div>
+                            </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase">Interested Course</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase">Remarks</label>
                                 <input 
                                     className="w-full p-2 border rounded-lg text-sm"
-                                    value={selectedLead.interested_in}
-                                    onChange={(e) => setSelectedLead({...selectedLead, interested_in: e.target.value})}
+                                    value={selectedLead.remarks || ''}
+                                    onChange={(e) => setSelectedLead({...selectedLead, remarks: e.target.value})}
                                 />
                             </div>
                         </div>

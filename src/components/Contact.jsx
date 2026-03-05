@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Phone, Mail, MessageSquare, ChevronDown, Check, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Phone, Mail, MessageSquare, AlertCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
 
-import { API_BASE_URL } from '../apiConfig';
+import { API_BASE_URL_PORTAL } from '../apiConfig';
 
 
 
@@ -18,18 +18,15 @@ export function Contact() {
     email: '',
     phone: '',
     message: '',
-    businessFocus: [],
+    domain: '',
+    category: '',
+    interested_in: '',
   });
 
   const [errors, setErrors] = useState({});
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
+  const [masterData, setMasterData] = useState([]);
+  const [availableCategories, setAvailableCategories] = useState([]);
 
-  const businessOptions = [
-    "International Preschool", "Overseas Consulting", "IAS Academy",
-    "Placement Services", "Tech Park", "Elite Sports",
-    "Business Ideas", "Language Hub", "Other Services"
-  ];
 
   // --- VALIDATION LOGIC ---
   const validateForm = () => {
@@ -58,69 +55,76 @@ export function Contact() {
       newErrors.email = "Please enter a valid email address";
     }
 
-    // Business Focus: Required
-    if (formData.businessFocus.length === 0) {
-      newErrors.businessFocus = "Select at least one area of interest";
-    }
+    if (!formData.domain) newErrors.domain = "Please select a domain";
+    if (!formData.category) newErrors.category = "Please select a category";
+    if (!formData.interested_in) newErrors.interested_in = "Please select an interest";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
+    const fetchMaster = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`);
+        if (!res.ok) return;
+        const json = await res.json();
+        setMasterData(Array.isArray(json) ? json : []);
+      } catch (err) {
+        console.error("Master fetch failed:", err);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    fetchMaster();
   }, []);
 
-  const toggleOption = (option) => {
-    const updatedFocus = formData.businessFocus.includes(option)
-      ? formData.businessFocus.filter((item) => item !== option)
-      : [...formData.businessFocus, option];
-    
-    setFormData({ ...formData, businessFocus: updatedFocus });
-    // Clear error for businessFocus if user selects an option
-    if (updatedFocus.length > 0) {
-      setErrors(prev => ({ ...prev, businessFocus: null }));
-    }
-  };
+  useEffect(() => {
+    const selectedDomain = masterData.find((d) => d.name === formData.domain);
+    setAvailableCategories(selectedDomain?.categories || []);
+  }, [formData.domain, masterData]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    // 1. Run Validation
-    if (!validateForm()) {
-      toast.error("Please fix the errors in the form");
-      return;
-    }
+  if (!validateForm()) {
+    toast.error("Please fix the errors in the form");
+    return;
+  }
 
-    const loadingToast = toast.loading("Sending your inquiry...");
+  const loadingToast = toast.loading("Sending your inquiry...");
 
-    try {
-      const response = await fetch(`${ API_BASE_URL }/api/contact`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+  try {
+    const payload = { ...formData };
+
+    const response = await fetch(`${API_BASE_URL_PORTAL}/api/contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      toast.success("Inquiry sent successfully!", { id: loadingToast });
+
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        message: '',
+        domain: '',
+        category: '',
+        interested_in: ''
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        toast.success("Inquiry sent successfully!", { id: loadingToast });
-        // Reset form and errors
-        setFormData({ name: '', email: '', phone: '', message: '', businessFocus: [] });
-        setErrors({});
-      } else {
-        throw new Error(data.error || "Failed to submit");
-      }
-    } catch (error) {
-      toast.error(error.message || "Server connection failed", { id: loadingToast });
+      setErrors({});
+    } else {
+      throw new Error(data.error || "Failed to submit");
     }
-  };
+
+  } catch (error) {
+    toast.error(error.message || "Server connection failed", { id: loadingToast });
+  }
+};
 
   return (
     <section id="contact" className="py-24 bg-white relative overflow-hidden">
@@ -214,41 +218,72 @@ export function Contact() {
                   </div>
                 </div>
 
-                {/* Business Focus Dropdown */}
-                <div className="space-y-2" ref={dropdownRef}>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Business Focus *</label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                      className={`w-full h-14 px-4 rounded-xl border bg-white flex items-center justify-between transition-all ${isDropdownOpen ? 'ring-2 ring-red-500/20 border-red-500 shadow-sm' : 'border-slate-200'} ${errors.businessFocus ? 'border-red-500 bg-red-50/30' : ''}`}
+                <div className="grid md:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Domain *</label>
+                    <select
+                      value={formData.domain}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          domain: e.target.value,
+                          category: '',
+                          interested_in: '',
+                        });
+                        setErrors((prev) => ({ ...prev, domain: null, category: null, interested_in: null }));
+                      }}
+                      className={`w-full h-14 px-4 rounded-xl border bg-white text-sm font-bold outline-none ${errors.domain ? 'border-red-500 bg-red-50/30' : 'border-slate-200'}`}
                     >
-                      <span className={`text-xs font-bold truncate pr-4 ${formData.businessFocus.length ? "text-slate-900" : "text-slate-400"}`}>
-                        {formData.businessFocus.length > 0 ? formData.businessFocus.join(", ") : "Choose areas of interest..."}
-                      </span>
-                      <ChevronDown size={18} className={`flex-shrink-0 transition-transform duration-300 ${isDropdownOpen ? 'rotate-180 text-red-600' : 'text-slate-400'}`} />
-                    </button>
-                    {errors.businessFocus && <p className="text-[10px] text-red-500 font-bold ml-1 mt-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.businessFocus}</p>}
+                      <option value="">Select Domain</option>
+                      {masterData.map((d) => (
+                        <option key={d.id} value={d.name}>{d.name}</option>
+                      ))}
+                    </select>
+                    {errors.domain && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.domain}</p>}
+                  </div>
 
-                    <AnimatePresence>
-                      {isDropdownOpen && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                          className="absolute z-30 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 grid grid-cols-1 md:grid-cols-2 gap-1 max-h-64 overflow-y-auto"
-                        >
-                          {businessOptions.map((option) => (
-                            <div 
-                              key={option}
-                              onClick={() => toggleOption(option)}
-                              className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${formData.businessFocus.includes(option) ? 'bg-red-50 text-red-600' : 'hover:bg-slate-50 text-slate-600'}`}
-                            >
-                              <span className="text-xs font-bold">{option}</span>
-                              {formData.businessFocus.includes(option) && <Check size={14} strokeWidth={3} />}
-                            </div>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Category *</label>
+                    <select
+                      value={formData.category}
+                      disabled={!formData.domain}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          category: e.target.value,
+                          interested_in: '',
+                        });
+                        setErrors((prev) => ({ ...prev, category: null, interested_in: null }));
+                      }}
+                      className={`w-full h-14 px-4 rounded-xl border bg-white text-sm font-bold outline-none disabled:bg-slate-100 ${errors.category ? 'border-red-500 bg-red-50/30' : 'border-slate-200'}`}
+                    >
+                      <option value="">Select Category</option>
+                      {availableCategories.map((c) => (
+                        <option key={c.id} value={c.category_name}>{c.category_name}</option>
+                      ))}
+                    </select>
+                    {errors.category && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.category}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Interested In *</label>
+                    <select
+                      value={formData.interested_in}
+                      disabled={!formData.category}
+                      onChange={(e) => {
+                        setFormData({ ...formData, interested_in: e.target.value });
+                        setErrors((prev) => ({ ...prev, interested_in: null }));
+                      }}
+                      className={`w-full h-14 px-4 rounded-xl border bg-white text-sm font-bold outline-none disabled:bg-slate-100 ${errors.interested_in ? 'border-red-500 bg-red-50/30' : 'border-slate-200'}`}
+                    >
+                      <option value="">Select Interest</option>
+                      {availableCategories
+                        .find((c) => c.category_name === formData.category)
+                        ?.values?.map((v) => (
+                          <option key={v.id} value={v.sub_value}>{v.sub_value}</option>
+                        ))}
+                    </select>
+                    {errors.interested_in && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.interested_in}</p>}
                   </div>
                 </div>
 
@@ -288,3 +323,4 @@ export function Contact() {
     </section>
   );
 }
+

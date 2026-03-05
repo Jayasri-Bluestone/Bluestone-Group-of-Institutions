@@ -1,18 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { Search } from "lucide-react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Search, RefreshCcw } from "lucide-react";
 import Pagination from "../Layout/Pagination";
 import LoadingScreen from "../Layout/LoadingScreen";
+import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 
 const viewConfig = {
   "all-enquiry": { apiView: "all", title: "All Enquiry" },
-  pendings: { apiView: "pending", title: "Pendings (No Follow-up / No Remarks)" },
+  pendings: { apiView: "pending", title: "Pendings" },
   "payment-status": { apiView: "payment", title: "Payment Status" },
   "invalid-enquiries": { apiView: "invalid", title: "Invalid Enquiries" },
 };
 
 const BGILeads = () => {
   const { view = "all-enquiry" } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -23,21 +25,62 @@ const BGILeads = () => {
   const [domain, setDomain] = useState("All");
   const [status, setStatus] = useState("All");
   const [paymentStatus, setPaymentStatus] = useState("All");
-  const [invalidReason, setInvalidReason] = useState("All");
+  const [todayOnly, setTodayOnly] = useState(false);
+  const invalidReason = "All";
   const [sortBy, setSortBy] = useState("created_at");
   const [sortOrder, setSortOrder] = useState("desc");
   const [pageSize, setPageSize] = useState(10);
+  const AUTO_REFRESH_MS = 30000;
+
+  const getDomainSlug = (name = "") => {
+    const mapping = {
+      "IAS Academy": "ias",
+      Techpark: "techpark",
+      Overseas: "overseas",
+      Placements: "placements",
+      "Language Hub": "languages",
+      "Elite Sports": "sports",
+      Preschool: "preschool",
+      Startup: "startup",
+    };
+    return mapping[name] || name.toLowerCase().replace(/\s+/g, "-");
+  };
+
+  const goToLeadDetails = (lead) => {
+    const slug = getDomainSlug(lead.domain || "");
+    navigate(`/portal/domain/${slug}/lead/${lead.id}`);
+  };
 
   const resolvedView = useMemo(() => viewConfig[view] || viewConfig["all-enquiry"], [view]);
 
   useEffect(() => {
-    if (!viewConfig[view]) navigate("/bgi/all-enquiry", { replace: true });
+    if (!viewConfig[view]) navigate("/portal/bgi/all-enquiry", { replace: true });
   }, [view, navigate]);
+
+  useEffect(() => {
+    const qp = new URLSearchParams(location.search);
+    const statusQ = qp.get("status");
+    const domainQ = qp.get("domain");
+    const todayQ = qp.get("today");
+
+    // Reset filters to defaults when query params are absent.
+    setStatus(statusQ || "All");
+    setDomain(domainQ || "All");
+    setTodayOnly(todayQ === "1");
+    if (resolvedView.apiView === "pending") {
+      setPaymentStatus("All");
+    }
+  }, [location.search, resolvedView.apiView]);
+
+  useEffect(() => {
+    // Keep pending page size numeric; boolean here breaks pagination math.
+    setPageSize(resolvedView.apiView === "pending" ? 20 : 10);
+  }, [resolvedView.apiView]);
 
   useEffect(() => {
     const fetchDomains = async () => {
       try {
-        const res = await fetch("http://localhost:5005/api/master/full-structure", {
+        const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`, {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         });
         if (res.ok) {
@@ -54,6 +97,98 @@ const BGILeads = () => {
   const fetchLeads = async (page = 1, limit = pageSize) => {
     setLoading(true);
     try {
+      if (resolvedView.apiView === "pending") {
+        const params = new URLSearchParams({
+          view: "all",
+          page: "1",
+          limit: "5000",
+          search: "",
+          domain,
+          status: "All",
+          payment_status: "All",
+          invalid_reason: invalidReason,
+          sort_by: sortBy,
+          sort_order: sortOrder,
+        });
+        const allRes = await fetch(`${API_BASE_URL_PORTAL}/api/bgi/leads?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (!allRes.ok) {
+          setData({ leads: [], total: 0, page: 1, totalPages: 1 });
+          return;
+        }
+
+        const allJson = await allRes.json();
+        const allRows = allJson.leads || [];
+
+        // Pending = all enquiries except Follow Up, Enrolled, and Closed.
+        let rows = allRows.filter((lead) => {
+          const st = String(lead.status || "").trim().toLowerCase();
+          return st !== "follow up" && st !== "enrolled" && st !== "closed";
+        });
+        const q = String(search || "").trim().toLowerCase();
+        if (q) {
+          rows = rows.filter((lead) => {
+            const name = String(lead.student_name || "").toLowerCase();
+            const email = String(lead.email || "").toLowerCase();
+            const phone = String(lead.phone || "");
+            const leadCode = String(lead.lead_code || "").toLowerCase();
+            const id = String(lead.id || "");
+            const leadDomain = String(lead.domain || "").toLowerCase();
+            return (
+              name.includes(q) ||
+              email.includes(q) ||
+              phone.includes(q) ||
+              leadCode.includes(q) ||
+              id.includes(q) ||
+              leadDomain.includes(q)
+            );
+          });
+        }
+
+        // Keep pending page aligned with dashboard pending card:
+        // do not narrow by status/payment filters.
+        if (todayOnly) {
+          const now = new Date();
+          rows = rows.filter((lead) => {
+            const d = new Date(lead.created_at);
+            return (
+              d.getFullYear() === now.getFullYear() &&
+              d.getMonth() === now.getMonth() &&
+              d.getDate() === now.getDate()
+            );
+          });
+        }
+
+        const toComparable = (lead, key) => {
+          if (key === "created_at") return new Date(lead.created_at || 0).getTime();
+          if (key === "total_fees" || key === "paid_amount") return Number(lead[key] || 0);
+          return String(lead[key] || "").toLowerCase();
+        };
+        rows = [...rows].sort((a, b) => {
+          const av = toComparable(a, sortBy);
+          const bv = toComparable(b, sortBy);
+          if (av < bv) return sortOrder === "asc" ? -1 : 1;
+          if (av > bv) return sortOrder === "asc" ? 1 : -1;
+          return 0;
+        });
+
+        const total = rows.length;
+        const safeLimit = Math.max(Number(limit) || 10, 1);
+        const totalPages = Math.max(Math.ceil(total / safeLimit), 1);
+        const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+        const start = (safePage - 1) * safeLimit;
+        const pagedRows = rows.slice(start, start + safeLimit);
+
+        setData({
+          leads: pagedRows,
+          total,
+          page: safePage,
+          totalPages,
+        });
+        return;
+      }
+
       const effectivePaymentStatus =
         resolvedView.apiView === "payment" && paymentStatus === "Unpaid" ? "All" : paymentStatus;
 
@@ -70,7 +205,7 @@ const BGILeads = () => {
         sort_order: sortOrder,
       });
 
-      const res = await fetch(`http://localhost:5005/api/bgi/leads?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/bgi/leads?${params.toString()}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (!res.ok) {
@@ -89,9 +224,25 @@ const BGILeads = () => {
             ? incomingLeads.filter((lead) => String(lead.status || "").trim().toLowerCase() === "closed")
             : incomingLeads;
 
+      const todayFilteredLeads = todayOnly
+        ? filteredLeads.filter((lead) => {
+            const d = new Date(lead.created_at);
+            const now = new Date();
+            return (
+              d.getFullYear() === now.getFullYear() &&
+              d.getMonth() === now.getMonth() &&
+              d.getDate() === now.getDate()
+            );
+          })
+        : filteredLeads;
+
       setData({
-        leads: filteredLeads,
-        total: resolvedView.apiView === "payment" ? filteredLeads.length : json.total || 0,
+        leads: todayFilteredLeads,
+        total: todayOnly
+          ? todayFilteredLeads.length
+          : resolvedView.apiView === "payment"
+            ? filteredLeads.length
+            : json.total || 0,
         page: json.page || page,
         totalPages: json.totalPages || 1,
       });
@@ -104,6 +255,14 @@ const BGILeads = () => {
     fetchLeads(1, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedView.apiView, search, domain, status, paymentStatus, invalidReason, sortBy, sortOrder, pageSize]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchLeads(data.page || 1, pageSize);
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.page, pageSize, resolvedView.apiView, search, domain, status, paymentStatus, invalidReason, sortBy, sortOrder, todayOnly]);
 
   if (loading && data.leads.length === 0) {
     return <LoadingScreen message="Loading BGI leads..." fullPage={false} />;
@@ -162,11 +321,43 @@ const BGILeads = () => {
           <option value="desc">Order: Desc</option>
           <option value="asc">Order: Asc</option>
         </select>
+        <button
+          type="button"
+          onClick={() => fetchLeads(1, pageSize)}
+          className="bg-blue-600 text-white rounded-lg text-sm px-3 py-2 font-bold hover:bg-blue-700"
+        >
+          Search
+        </button>
+        {/* <button
+          type="button"
+          onClick={() => {
+            setSearch("");
+            setDomain("All");
+            setStatus("All");
+            setPaymentStatus("All");
+            setSortBy("created_at");
+            setSortOrder("desc");
+            setTodayOnly(false);
+            fetchLeads(1, pageSize);
+          }}
+          className="bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm px-3 py-2 font-bold hover:bg-red-100"
+        >
+          Reset
+        </button> */}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-3 border-b bg-slate-50 flex items-center justify-between">
-          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total: {data.total}</div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchLeads(data.page || 1, pageSize)}
+              className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+              title="Refresh Table"
+            >
+              <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
+            </button>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total: {data.total}</div>
+          </div>
           <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
             <span>Show</span>
             <select
@@ -190,10 +381,7 @@ const BGILeads = () => {
                 <th className="p-3">Contact</th>
                 <th className="p-3">Domain</th>
                 <th className="p-3">Status</th>
-                <th className="p-3">Payment</th>
-                <th className="p-3">Fees</th>
-                <th className="p-3">Paid</th>
-                <th className="p-3">Remarks</th>
+                <th className="p-3 text-center">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -201,7 +389,7 @@ const BGILeads = () => {
                 <tr key={lead.id} className="hover:bg-slate-50">
                   <td className="p-3">
                     <p className="font-bold text-slate-800">{lead.student_name}</p>
-                    <p className="text-[10px] text-slate-400">#{lead.id}</p>
+                    <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`}</p>
                   </td>
                   <td className="p-3 text-xs text-slate-600">
                     <div>{lead.email || "-"}</div>
@@ -209,15 +397,18 @@ const BGILeads = () => {
                   </td>
                   <td className="p-3 text-xs font-bold text-blue-700">{lead.domain}</td>
                   <td className="p-3 text-xs">{lead.status}</td>
-                  <td className="p-3 text-xs">{lead.payment_status || "Unpaid"}</td>
-                  <td className="p-3 text-xs">{Number(lead.total_fees || 0).toLocaleString()}</td>
-                  <td className="p-3 text-xs">{Number(lead.paid_amount || 0).toLocaleString()}</td>
-                  <td className="p-3 text-xs">{lead.invalid_reason || "-"}</td>
-                  <td className="p-3 text-xs max-w-[220px] truncate">{lead.remarks || "-"}</td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => goToLeadDetails(lead)}
+                      className="text-[10px] font-black uppercase bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
+                    >
+                      View Details
+                    </button>
+                  </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400">No leads found.</td>
+                  <td colSpan={5} className="py-16 text-center text-slate-400">No leads found.</td>
                 </tr>
               )}
             </tbody>

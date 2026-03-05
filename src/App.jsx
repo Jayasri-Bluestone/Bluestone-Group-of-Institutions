@@ -41,10 +41,11 @@ import AdminSettings from './components/Login/AdminSettings';
 import { AdminMediaManager } from './components/Login/AdminMediaManager';
 
 // --- PORTAL CRM IMPORTS (The /login side) ---
-import Layout from './components/Admin Panel/Layout/layout';
+import Layout from './components/Admin Panel/Layout/Layout';
 import DomainPage from './components/Admin Panel/Sidebar/Domain';
 import Dashboard from './components/Admin Panel/Sidebar/Dashboard';
 import BGILeads from './components/Admin Panel/Sidebar/BGILeads';
+import LeadDetails from './components/Admin Panel/Sidebar/LeadDetails';
 import UserManagement from './components/Admin Panel/Sidebar/UserManagement';
 import MasterManagement from './components/Admin Panel/Sidebar/MasterManagement';
 import LiveFeedManager from './components/Admin Panel/Layout/Notification';
@@ -65,12 +66,51 @@ function ScrollToTop() {
 const DomainResolver = ({ user }) => {
   const { slug } = useParams();
   const mapping = {
-    ias: 'IAS Academy', techpark: 'Techpark', overseas: 'Overseas',
-    placements: 'Placements', languages: 'Language Hub',
-    sports: 'Elite Sports', preschool: 'Preschool', startup: 'Startup'
+    ias: 'Bluestone IAS Academy',
+    techpark: 'Bluestone Techpark',
+    overseas: 'Bluestone Overseas',
+    placements: 'Bluestone Placements',
+    languages: 'Bluestone Language Hub',
+    sports: 'Bluestone Elite Sports',
+    preschool: 'Bluestone Preschool',
+    startup: 'Bluestone Startup',
+    'ias-academy': 'Bluestone IAS Academy',
+    'bluestone-ias-academy': 'Bluestone IAS Academy',
+    'bluestone-techpark': 'Bluestone Techpark',
+    'bluestone-overseas': 'Bluestone Overseas',
+    'bluestone-placements': 'Bluestone Placements',
+    'bluestone-language-hub': 'Bluestone Language Hub',
+    'bluestone-elite-sports': 'Bluestone Elite Sports',
+    'bluestone-preschool': 'Bluestone Preschool',
+    'bluestone-startup': 'Bluestone Startup',
   };
   const domainName = mapping[slug] || slug.replace(/-/g, ' ');
   return <DomainPage domain={domainName} user={user} />;
+};
+
+const LeadDetailsResolver = ({ user }) => {
+  const { slug } = useParams();
+  const mapping = {
+    ias: 'Bluestone IAS Academy',
+    techpark: 'Bluestone Techpark',
+    overseas: 'Bluestone Overseas',
+    placements: 'Bluestone Placements',
+    languages: 'Bluestone Language Hub',
+    sports: 'Bluestone Elite Sports',
+    preschool: 'Bluestone Preschool',
+    startup: 'Bluestone Startup',
+    'ias-academy': 'Bluestone IAS Academy',
+    'bluestone-ias-academy': 'Bluestone IAS Academy',
+    'bluestone-techpark': 'Bluestone Techpark',
+    'bluestone-overseas': 'Bluestone Overseas',
+    'bluestone-placements': 'Bluestone Placements',
+    'bluestone-language-hub': 'Bluestone Language Hub',
+    'bluestone-elite-sports': 'Bluestone Elite Sports',
+    'bluestone-preschool': 'Bluestone Preschool',
+    'bluestone-startup': 'Bluestone Startup',
+  };
+  const domainName = mapping[slug] || slug.replace(/-/g, ' ');
+  return <LeadDetails domain={domainName} user={user} />;
 };
 
 // Public Layout Wrapper
@@ -102,6 +142,13 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
+  const getTier = (user) => {
+    if (user?.tier) return user.tier;
+    if (['Main Admin', 'MD', 'GM'].includes(user?.role)) return 'SUPER_ADMIN';
+    if (['TL', 'Coordinator', 'Head'].includes(user?.role)) return 'ADMIN';
+    return 'STAFF';
+  };
+
   const handleLogin = (userData, token) => {
     localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', token);
@@ -117,7 +164,7 @@ export default function App() {
     return (
       <div className="app-loader flex flex-col items-center justify-center h-screen">
         <div className="app-loader__spinner border-4 border-blue-500 border-t-transparent rounded-full w-12 h-12 animate-spin" />
-        <p className="mt-4 text-gray-600">Loading Bluestone Portal...</p>
+        <p className="mt-4 text-gray-600">Loading...</p>
       </div>
     );
   }
@@ -158,7 +205,7 @@ export default function App() {
 
         {/* --- 2. AUTHENTICATION PAGES --- */}
         <Route path="/admin-login" element={<AdminLogin onLoginSuccess={handleLogin} />} />
-        <Route path="/login" element={!auth.isAuthenticated ? <LoginPage onLoginSuccess={handleLogin} /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/portal" element={!auth.isAuthenticated ? <LoginPage onLoginSuccess={handleLogin} /> : <Navigate to="/portal/dashboard" replace />} />
 
         {/* --- 3. ADMIN CMS ROUTES (/admin) --- */}
         {auth.isAuthenticated ? (
@@ -179,36 +226,42 @@ export default function App() {
         {/* --- 2. PORTAL AUTHENTICATION --- */}
         <Route 
           path="/portal" 
-          element={!auth.isAuthenticated ? <LoginPage onLoginSuccess={handleLogin} /> : <Navigate to="/dashboard" replace />} 
+          element={!auth.isAuthenticated ? <LoginPage onLoginSuccess={handleLogin} /> : <Navigate to="/portal/dashboard" replace />} 
         />
 
         {/* --- 4. PORTAL CRM ROUTES (/dashboard) --- */}
         {auth.isAuthenticated ? (
           <Route element={<Layout user={auth.user} onLogout={handleLogout} />}>
-            <Route path="/dashboard" element={<Dashboard user={auth.user} />} />
-            <Route path="/domain/:slug" element={<DomainResolver user={auth.user} />} />
-            {['Main Admin', 'MD', 'GM'].includes(auth.user.role) && (
-              <Route path="/bgi/:view" element={<BGILeads />} />
+            <Route path="/portal/dashboard" element={<Dashboard user={auth.user} />} />
+            <Route path="/portal/domain/:slug" element={<DomainResolver user={auth.user} />} />
+            <Route path="/portal/domain/:slug/lead/:leadId" element={<LeadDetailsResolver user={auth.user} />} />
+            {getTier(auth.user) === 'SUPER_ADMIN' && (
+              <Route path="/portal/bgi/:view" element={<BGILeads />} />
             )}
             
             {/* Role Restricted Portal Routes */}
-            {['Main Admin', 'TL'].includes(auth.user.role) && (
-              <Route path="/live-feed" element={<LiveFeedManager user={auth.user} />} />
+            {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN') && (
+              <Route path="/portal/live-feed" element={<LiveFeedManager user={auth.user} />} />
             )}
 
-            {auth.user.role === 'Main Admin' && (
+            {getTier(auth.user) === 'SUPER_ADMIN' && (
               <>
-                <Route path="/user-management" element={<UserManagement user={auth.user} />} />
-                <Route path="/master" element={<MasterManagement user={auth.user} />} />
+                <Route path="/portal/user-management" element={<UserManagement user={auth.user} />} />
+              </>
+            )}
+
+            {getTier(auth.user) === 'SUPER_ADMIN' && (
+              <>
+                <Route path="/portal/master" element={<MasterManagement user={auth.user} />} />
               </>
             )}
           </Route>
         ) : (
-          <Route path="/dashboard/*" element={<Navigate to="/login" replace />} />
+          <Route path="/portal/dashboard/*" element={<Navigate to="/portal" replace />} />
         )}
 
         {/* 404 Catch-all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/portal" replace />} />
       </Routes>
     </Router>
   );

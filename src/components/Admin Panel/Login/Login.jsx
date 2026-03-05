@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'react-hot-toast';
 import { Mail, Lock, ShieldCheck, RefreshCw } from 'lucide-react';
+import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 
 const LoginPage = ({ onLoginSuccess }) => {
   const [captchaText, setCaptchaText] = useState("");
@@ -36,42 +38,43 @@ const LoginPage = ({ onLoginSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (userInput.toUpperCase() !== captchaText) {
-      alert("Invalid Security Code.");
+      toast.error("Invalid Security Code.");
       return generateCaptcha();
     }
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5005/api/auth/login', {
+      const response = await fetch(`${API_BASE_URL_PORTAL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
       const data = await response.json();
       if (response.ok) {
+        toast.success("Login successful");
         onLoginSuccess(data.user, data.token);
       } else {
-        alert(data.message || "Invalid Credentials");
+        toast.error(data.message || "Invalid Credentials");
       }
-    } catch (err) {
-      alert("Backend is not responding.");
+    } catch {
+      toast.error("Backend is not responding.");
     } finally { setLoading(false); }
   };
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="bg-slate-900 p-8 text-center">
-          <h1 className="text-2xl font-black text-blue-400 tracking-tighter uppercase italic">Bluestone Group</h1>
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Internal Management System</p>
+        <div className="bg-red-600 p-8 text-center">
+          <h1 className="text-2xl font-black text-white tracking-tighter uppercase italic">Bluestone CRM</h1>
+          <p className="text-white/70 text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Leads Management System</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-5">
           <div className="relative">
             <Mail className="absolute left-3 top-3.5 text-slate-400" size={18} />
             <input 
-              type="email" placeholder="Corporate Email" required 
-              className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm transition-all"
+              type="email" placeholder="Email" required 
+              className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-red-500 outline-none text-sm transition-all"
               onChange={(e) => setFormData({...formData, email: e.target.value})}
             />
           </div>
@@ -80,7 +83,7 @@ const LoginPage = ({ onLoginSuccess }) => {
             <Lock className="absolute left-3 top-3.5 text-slate-400" size={18} />
             <input 
               type="password" placeholder="Password" required 
-              className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm transition-all"
+              className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-red-500 outline-none text-sm transition-all"
               onChange={(e) => setFormData({...formData, password: e.target.value})}
             />
           </div>
@@ -88,19 +91,19 @@ const LoginPage = ({ onLoginSuccess }) => {
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
              <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Verify Identity</span>
-                <button type="button" onClick={generateCaptcha} className="text-blue-600 hover:rotate-90 transition-transform"><RefreshCw size={14} /></button>
+                <button type="button" onClick={generateCaptcha} className="text-red-600 hover:rotate-90 transition-transform"><RefreshCw size={14} /></button>
              </div>
              <canvas ref={canvasRef} width="200" height="50" className="mx-auto rounded" />
              <input 
                type="text" placeholder="Type letters above" required value={userInput}
                onChange={(e) => setUserInput(e.target.value)}
-               className="w-full px-4 py-2 border rounded-lg text-center font-bold uppercase text-sm focus:border-blue-500 outline-none"
+               className="w-full px-4 py-2 border rounded-lg text-center font-bold uppercase text-sm focus:border-red-500 outline-none"
              />
           </div>
 
           <button 
             disabled={loading} 
-            className="w-full bg-slate-900 hover:bg-blue-600 text-white font-bold py-4 rounded-xl text-sm uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:bg-slate-300"
+            className="w-full bg-slate-900 hover:bg-red-600 text-white font-bold py-4 rounded-xl text-sm uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:bg-slate-300"
           >
             {loading ? "Authenticating..." : "Secure Login"}
           </button>
@@ -111,3 +114,4 @@ const LoginPage = ({ onLoginSuccess }) => {
 };
 
 export default LoginPage;
+

@@ -26,7 +26,7 @@ const LoadingScreen = ({ message = "Loading Content...", fullPage = true }) => {
             </div>
 
             {/* CSS for custom animation if not in tailwind config */}
-            <style jsx>{`
+            <style>{`
                 @keyframes loading-bar {
                     0% { transform: translateX(-100%); }
                     100% { transform: translateX(100%); }
