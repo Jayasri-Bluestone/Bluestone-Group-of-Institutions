@@ -25,6 +25,7 @@ const DomainPage = ({ domain, user }) => {
     const location = useLocation();
     const navigate = useNavigate();
     const hasFocusedLeadRef = useRef(false);
+    const requestSeqRef = useRef(0);
     const focusLeadId = location.state?.focusLeadId || null;
     const [data, setData] = useState({ 
         leads: [], 
@@ -52,8 +53,10 @@ const [interestFilter, setInterestFilter] = useState('All');
 const AUTO_REFRESH_MS = 30000;
 
 
-   const fetchDomainData = useCallback(async (page = 1, limit = pageSize) => {
-    setLoading(true);
+   const fetchDomainData = useCallback(async (page = 1, limit = pageSize, options = {}) => {
+    const { silent = false } = options;
+    const requestId = ++requestSeqRef.current;
+    if (!silent) setLoading(true);
 
     try {
         const token = localStorage.getItem('token');
@@ -64,6 +67,61 @@ const AUTO_REFRESH_MS = 30000;
             ? domain
             : user.domain;
 
+        const isWaitingView = viewMode === 'waiting';
+        const isPaymentView = viewMode === 'payment';
+        if (isWaitingView || isPaymentView) {
+            const params = new URLSearchParams({
+                page: '1',
+                limit: '5000'
+            });
+            if (categoryFilter !== 'All') params.set('category', categoryFilter);
+            if (interestFilter !== 'All') params.set('interest', interestFilter);
+            if (searchTerm.trim()) params.set('search', searchTerm.trim());
+
+            const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
+            const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (res.status === 403) {
+                console.error("Access denied");
+                return;
+            }
+
+            const result = await res.json();
+            if (!res.ok) return;
+
+            let rows = Array.isArray(result.leads) ? result.leads : [];
+            rows = rows.filter((lead) => {
+                const st = String(lead.status || '').trim().toLowerCase();
+                const ps = String(lead.payment_status || '').trim().toLowerCase();
+                if (isWaitingView) {
+                    const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
+                    return st.includes('waiting') || !knownNonWaiting.includes(st);
+                }
+                if (isPaymentView) {
+                    return ps === 'paid' || ps === 'partially paid';
+                }
+                return true;
+            });
+
+            const total = rows.length;
+            const safeLimit = Math.max(Number(limit) || 10, 1);
+            const totalPages = Math.max(Math.ceil(total / safeLimit), 1);
+            const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+            const start = (safePage - 1) * safeLimit;
+            const pagedRows = rows.slice(start, start + safeLimit);
+
+            if (requestId !== requestSeqRef.current) return;
+            setData({
+                leads: pagedRows,
+                totalPages,
+                page: safePage,
+                total
+            });
+            return;
+        }
+
         const params = new URLSearchParams({
             page: String(page),
             limit: String(limit)
@@ -71,7 +129,17 @@ const AUTO_REFRESH_MS = 30000;
 
         if (categoryFilter !== 'All') params.set('category', categoryFilter);
         if (interestFilter !== 'All') params.set('interest', interestFilter);
-        if (statusFilter !== 'All') params.set('status', statusFilter);
+        const viewStatusMap = {
+            all: 'New',
+            'lead-status': 'Follow Up',
+            invalid: 'Closed',
+        };
+        const forcedStatusByView = viewStatusMap[viewMode];
+        if (forcedStatusByView) {
+            params.set('status', forcedStatusByView);
+        } else if (statusFilter !== 'All') {
+            params.set('status', statusFilter);
+        }
         if (searchTerm.trim()) params.set('search', searchTerm.trim());
 
         const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
@@ -90,6 +158,7 @@ const AUTO_REFRESH_MS = 30000;
         if (res.ok) {
             const pagination = result.pagination || {};
 
+            if (requestId !== requestSeqRef.current) return;
             setData({
                 leads: result.leads || [],
                 totalPages: pagination.totalPages || 1,
@@ -101,9 +170,9 @@ const AUTO_REFRESH_MS = 30000;
     } catch (err) {
         console.error("Fetch failed:", err);
     } finally {
-        setLoading(false);
+        if (requestId === requestSeqRef.current) setLoading(false);
     }
-}, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm]);
+}, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm, viewMode]);
 
 useEffect(() => {
     if (!isSuperAdmin) {
@@ -133,7 +202,7 @@ const fetchStaff = useCallback(async () => {
 
     useEffect(() => {
         const timer = setInterval(() => {
-            fetchDomainData(data.page || 1, pageSize);
+            fetchDomainData(data.page || 1, pageSize, { silent: true });
         }, AUTO_REFRESH_MS);
         return () => clearInterval(timer);
     }, [fetchDomainData, data.page, pageSize]);
@@ -214,7 +283,8 @@ const resetFilters = () => {
         setStatusFilter(statusQ || 'All');
         setPendingOnly(pendingQ === '1');
         setTodayOnly(todayQ === '1');
-        setViewMode((viewQ || 'all').toLowerCase());
+        const normalizedView = (viewQ || 'all').toLowerCase();
+        setViewMode(normalizedView === 'pending' ? 'waiting' : normalizedView);
     }, [location.search]);
 
     useEffect(() => {
@@ -229,7 +299,15 @@ const resetFilters = () => {
         }
     }, [focusLeadId, data.leads]);
 
-    const updateStatus = async (leadId, newStatus) => {
+    const updateStatus = async (leadId, newStatus, customSuccessMessage = null, leadName = '') => {
+        const confirmed = await confirmToast(
+            `Move ${leadName ? `"${leadName}" ` : ''}to ${newStatus}?`,
+            "Move"
+        );
+        if (!confirmed) {
+            fetchDomainData(data.page);
+            return false;
+        }
         try {
             const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/status`, {
                 method: 'PUT',
@@ -240,14 +318,17 @@ const resetFilters = () => {
                 body: JSON.stringify({ leadId, status: newStatus })
             });
             if (res.ok) {
-                toast.success(`Status updated to ${newStatus}`);
+                toast.success(customSuccessMessage || `Status updated to ${newStatus}`);
                 fetchDomainData(data.page);
+                return true;
             } else {
                 toast.error("Failed to update status");
+                return false;
             }
         } catch (err) {
             console.error(err);
             toast.error("Failed to update status");
+            return false;
         }
     };
 
@@ -303,8 +384,9 @@ const resetFilters = () => {
         lead.phone.includes(searchTerm) ||
         (lead.email || '').toLowerCase().includes(q);
 
+    const normalizedStatusFilter = String(statusFilter || 'All').trim().toLowerCase();
     const matchesStatus =
-        statusFilter === 'All' || lead.status === statusFilter;
+        normalizedStatusFilter === 'all' || leadStatus === normalizedStatusFilter;
 
     const matchesCategory =
         categoryFilter === 'All' || lead.category === categoryFilter;
@@ -312,10 +394,8 @@ const resetFilters = () => {
     const matchesInterest =
         interestFilter === 'All' || lead.interested_in === interestFilter;
 
-    const isPendingLead =
-        leadStatus !== 'follow up' &&
-        leadStatus !== 'enrolled' &&
-        leadStatus !== 'closed';
+    const hasAssignedStaff = Boolean(lead.assigned_to || lead.assigned_to_name);
+    const isPendingLead = !hasAssignedStaff;
 
     const matchesPending = !pendingOnly || isPendingLead;
 
@@ -331,10 +411,15 @@ const resetFilters = () => {
     })();
 
     const matchesViewMode = (() => {
-        if (viewMode === 'pending') return isPendingLead;
+        if (viewMode === 'all') return leadStatus === 'new';
+        if (viewMode === 'lead-status') return leadStatus === 'follow up';
+        if (viewMode === 'waiting') {
+            const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
+            return leadStatus.includes('waiting') || !knownNonWaiting.includes(leadStatus);
+        }
         if (viewMode === 'invalid') return leadStatus === 'closed';
         if (viewMode === 'payment') {
-            return leadPayment === 'paid' || leadPayment === 'partially paid' || leadPayment === 'unpaid';
+            return leadPayment === 'paid' || leadPayment === 'partially paid';
         }
         return true;
     })();
@@ -399,9 +484,9 @@ const allValues = categories.flatMap(c => c.values || []);
    
 
     const viewTitleMap = {
-        all: 'All Enquiry / Leads',
+        all: 'All Enquiries',
         'lead-status': 'All Leads Status',
-        pending: 'All Pendings',
+        waiting: 'Waiting for Confirmation',
         payment: 'All Payment Status',
         invalid: 'All Invalid Enquiries',
     };
@@ -477,6 +562,7 @@ const allValues = categories.flatMap(c => c.values || []);
                             <option value="All">All Status</option>
                             <option value="New">New</option>
                             <option value="Follow Up">Follow Up</option>
+                            <option value="Waiting for Confirmation">Waiting for Confirmation</option>
                             <option value="Enrolled">Enrolled</option>
                             <option value="Closed">Closed</option>
                         </select>
@@ -598,11 +684,12 @@ const allValues = categories.flatMap(c => c.values || []);
                                     <td className="p-4 border-r border-slate-50">
                                         <select 
                                             value={lead.status}
-                                            onChange={(e) => updateStatus(lead.id, e.target.value)}
+                                            onChange={(e) => updateStatus(lead.id, e.target.value, null, lead.student_name)}
                                             className={`text-[10px] font-black uppercase px-2 py-1 rounded border border-transparent outline-none cursor-pointer ${getStatusStyle(lead.status)}`}
                                         >
                                             <option value="New">New</option>
                                             <option value="Follow Up">Follow Up</option>
+                                            <option value="Waiting for Confirmation">Waiting for Confirmation</option>
                                             <option value="Enrolled">Enrolled</option>
                                             <option value="Closed">Closed</option>
                                         </select>
@@ -622,7 +709,7 @@ const allValues = categories.flatMap(c => c.values || []);
                                                 className="inline-flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
                                                 title="History"
                                             >
-                                                <History size={10} /> VIEW
+                                                <History size={10} /> HISTORY
                                             </button>
                                             <button 
                                                 onClick={() => handleEditLead(lead)}
@@ -805,6 +892,7 @@ const getStatusStyle = (status) => {
     switch (status) {
         case 'New': return 'bg-blue-100 text-blue-700';
         case 'Follow Up': return 'bg-orange-100 text-orange-700';
+        case 'Waiting for Confirmation': return 'bg-amber-100 text-amber-700';
         case 'Enrolled': return 'bg-green-100 text-green-700';
         case 'Closed': return 'bg-red-100 text-red-700';
         default: return 'bg-slate-100 text-slate-700';

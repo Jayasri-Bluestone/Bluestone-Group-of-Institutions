@@ -97,7 +97,7 @@ const LoginPage = ({ onLoginSuccess }) => {
              <input 
                type="text" placeholder="Type letters above" required value={userInput}
                onChange={(e) => setUserInput(e.target.value)}
-               className="w-full px-4 py-2 border rounded-lg text-center font-bold uppercase text-sm focus:border-red-500 outline-none"
+               className="w-full px-4 py-2 border rounded-lg text-slate-400 text-center font-bold uppercase text-sm focus:border-red-500 outline-none"
              />
           </div>
 

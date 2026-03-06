@@ -1,15 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Search, RefreshCcw } from "lucide-react";
+import { toast } from "react-hot-toast";
+import { Search, RefreshCcw, History, Edit, X } from "lucide-react";
 import Pagination from "../Layout/Pagination";
 import LoadingScreen from "../Layout/LoadingScreen";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
+import { confirmToast } from "../../../utils/toastConfirm";
 
 const viewConfig = {
-  "all-enquiry": { apiView: "all", title: "All Enquiry" },
-  pendings: { apiView: "pending", title: "Pendings" },
-  "payment-status": { apiView: "payment", title: "Payment Status" },
-  "invalid-enquiries": { apiView: "invalid", title: "Invalid Enquiries" },
+  "all-enquiry": { apiView: "all", title: "All Enquiries", forcedStatus: "New" },
+  "lead-status": { apiView: "all", title: "All Leads Status", forcedStatus: "Follow Up" },
+  "waiting-confirmation": { apiView: "all", title: "Waiting for Confirmation", forcedStatus: "Waiting for Confirmation" },
+  pendings: { apiView: "all", title: "Waiting for Confirmation", forcedStatus: "Waiting for Confirmation" },
+  "payment-status": { apiView: "payment", title: "All Payment Status" },
+  "invalid-enquiries": { apiView: "invalid", title: "All Invalid Enquiries", forcedStatus: "Closed" },
 };
 
 const BGILeads = () => {
@@ -19,7 +23,14 @@ const BGILeads = () => {
 
   const [loading, setLoading] = useState(true);
   const [domains, setDomains] = useState([]);
+  const [staffList, setStaffList] = useState([]);
+  const [masterData, setMasterData] = useState([]);
   const [data, setData] = useState({ leads: [], total: 0, page: 1, totalPages: 1 });
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [remarksHistory, setRemarksHistory] = useState([]);
+  const [historyCandidate, setHistoryCandidate] = useState("");
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedLead, setSelectedLead] = useState(null);
 
   const [search, setSearch] = useState("");
   const [domain, setDomain] = useState("All");
@@ -67,9 +78,7 @@ const BGILeads = () => {
     setStatus(statusQ || "All");
     setDomain(domainQ || "All");
     setTodayOnly(todayQ === "1");
-    if (resolvedView.apiView === "pending") {
-      setPaymentStatus("All");
-    }
+    if (resolvedView.apiView === "pending") setPaymentStatus("All");
   }, [location.search, resolvedView.apiView]);
 
   useEffect(() => {
@@ -86,17 +95,129 @@ const BGILeads = () => {
         if (res.ok) {
           const json = await res.json();
           setDomains(Array.isArray(json) ? json.map((d) => d.name) : []);
+          setMasterData(Array.isArray(json) ? json : []);
         }
       } catch {
         setDomains([]);
+        setMasterData([]);
       }
     };
     fetchDomains();
   }, []);
 
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff-list`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setStaffList(Array.isArray(json) ? json : []);
+        }
+      } catch {
+        setStaffList([]);
+      }
+    };
+    fetchStaff();
+  }, []);
+
   const fetchLeads = async (page = 1, limit = pageSize) => {
     setLoading(true);
     try {
+      const isWaitingView = resolvedView.forcedStatus === "Waiting for Confirmation";
+      if (isWaitingView) {
+        const params = new URLSearchParams({
+          view: "all",
+          page: "1",
+          limit: "5000",
+          search: "",
+          domain,
+          status: "All",
+          payment_status: "All",
+          invalid_reason: invalidReason,
+          sort_by: sortBy,
+          sort_order: sortOrder,
+        });
+
+        const allRes = await fetch(`${API_BASE_URL_PORTAL}/api/bgi/leads?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (!allRes.ok) {
+          setData({ leads: [], total: 0, page: 1, totalPages: 1 });
+          return;
+        }
+
+        const allJson = await allRes.json();
+        let rows = allJson.leads || [];
+
+        rows = rows.filter((lead) => {
+          const st = String(lead.status || "").trim().toLowerCase();
+          const knownNonWaiting = ["new", "follow up", "enrolled", "closed"];
+          return st.includes("waiting") || !knownNonWaiting.includes(st);
+        });
+
+        const q = String(search || "").trim().toLowerCase();
+        if (q) {
+          rows = rows.filter((lead) => {
+            const name = String(lead.student_name || "").toLowerCase();
+            const email = String(lead.email || "").toLowerCase();
+            const phone = String(lead.phone || "");
+            const leadCode = String(lead.lead_code || "").toLowerCase();
+            const id = String(lead.id || "");
+            const leadDomain = String(lead.domain || "").toLowerCase();
+            return (
+              name.includes(q) ||
+              email.includes(q) ||
+              phone.includes(q) ||
+              leadCode.includes(q) ||
+              id.includes(q) ||
+              leadDomain.includes(q)
+            );
+          });
+        }
+
+        if (todayOnly) {
+          const now = new Date();
+          rows = rows.filter((lead) => {
+            const d = new Date(lead.created_at);
+            return (
+              d.getFullYear() === now.getFullYear() &&
+              d.getMonth() === now.getMonth() &&
+              d.getDate() === now.getDate()
+            );
+          });
+        }
+
+        const toComparable = (lead, key) => {
+          if (key === "created_at") return new Date(lead.created_at || 0).getTime();
+          if (key === "total_fees" || key === "paid_amount") return Number(lead[key] || 0);
+          return String(lead[key] || "").toLowerCase();
+        };
+        rows = [...rows].sort((a, b) => {
+          const av = toComparable(a, sortBy);
+          const bv = toComparable(b, sortBy);
+          if (av < bv) return sortOrder === "asc" ? -1 : 1;
+          if (av > bv) return sortOrder === "asc" ? 1 : -1;
+          return 0;
+        });
+
+        const total = rows.length;
+        const safeLimit = Math.max(Number(limit) || 10, 1);
+        const totalPages = Math.max(Math.ceil(total / safeLimit), 1);
+        const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+        const start = (safePage - 1) * safeLimit;
+        const pagedRows = rows.slice(start, start + safeLimit);
+
+        setData({
+          leads: pagedRows,
+          total,
+          page: safePage,
+          totalPages,
+        });
+        return;
+      }
+
       if (resolvedView.apiView === "pending") {
         const params = new URLSearchParams({
           view: "all",
@@ -191,6 +312,7 @@ const BGILeads = () => {
 
       const effectivePaymentStatus =
         resolvedView.apiView === "payment" && paymentStatus === "Unpaid" ? "All" : paymentStatus;
+      const effectiveStatus = resolvedView.forcedStatus || status;
 
       const params = new URLSearchParams({
         view: resolvedView.apiView,
@@ -198,7 +320,7 @@ const BGILeads = () => {
         limit: String(limit),
         search,
         domain,
-        status,
+        status: effectiveStatus,
         payment_status: effectivePaymentStatus,
         invalid_reason: invalidReason,
         sort_by: sortBy,
@@ -214,15 +336,24 @@ const BGILeads = () => {
       }
       const json = await res.json();
       const incomingLeads = json.leads || [];
-      const filteredLeads =
-        resolvedView.apiView === "payment"
-          ? incomingLeads.filter((lead) => {
-              const ps = String(lead.payment_status || "").trim().toLowerCase();
-              return ps === "paid" || ps === "partially paid";
-            })
-          : resolvedView.apiView === "invalid"
-            ? incomingLeads.filter((lead) => String(lead.status || "").trim().toLowerCase() === "closed")
-            : incomingLeads;
+      const filteredLeads = incomingLeads.filter((lead) => {
+        const st = String(lead.status || "").trim().toLowerCase();
+        const ps = String(lead.payment_status || "").trim().toLowerCase();
+        if (resolvedView.apiView === "payment") {
+          return ps === "paid" || ps === "partially paid";
+        }
+        if (resolvedView.apiView === "invalid") {
+          return st === "closed";
+        }
+        if (resolvedView.forcedStatus) {
+          const wanted = String(resolvedView.forcedStatus).trim().toLowerCase();
+          if (wanted === "waiting for confirmation") {
+            return st.includes("waiting");
+          }
+          return st === wanted;
+        }
+        return true;
+      });
 
       const todayFilteredLeads = todayOnly
         ? filteredLeads.filter((lead) => {
@@ -248,6 +379,128 @@ const BGILeads = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateStatus = async (leadId, newStatus, leadName = "") => {
+    const confirmed = await confirmToast(
+      `Move ${leadName ? `"${leadName}" ` : ""}to ${newStatus}?`,
+      "Move"
+    );
+    if (!confirmed) return;
+
+    const tid = toast.loading("Updating status...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ leadId, status: newStatus }),
+      });
+      if (!res.ok) {
+        toast.error("Failed to update status", { id: tid });
+        return;
+      }
+      toast.success(`Moved to ${newStatus}`, { id: tid });
+      fetchLeads(data.page || 1, pageSize);
+    } catch {
+      toast.error("Failed to update status", { id: tid });
+    }
+  };
+
+  const assignLead = async (leadId, staffId, staffName) => {
+    const tid = toast.loading("Assigning lead...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/assign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ leadId, staffId, staffName }),
+      });
+      if (!res.ok) {
+        toast.error("Assignment failed", { id: tid });
+        return;
+      }
+      toast.success(`Assigned to ${staffName || "staff"}`, { id: tid });
+      fetchLeads(data.page || 1, pageSize);
+    } catch {
+      toast.error("Assignment failed", { id: tid });
+    }
+  };
+
+  const deleteLead = async (id) => {
+    const confirmed = await confirmToast("Delete this lead?", "Delete");
+    if (!confirmed) return;
+
+    const tid = toast.loading("Deleting lead...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.message || err.msg || "Delete failed", { id: tid });
+        return;
+      }
+      toast.success("Lead deleted successfully", { id: tid });
+      fetchLeads(data.page || 1, pageSize);
+    } catch {
+      toast.error("Delete failed", { id: tid });
+    }
+  };
+
+  const fetchLeadHistory = async (leadId, candidateName) => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/history/leads/${leadId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) {
+        setRemarksHistory([]);
+        toast.error(`History API error (${res.status})`);
+        return;
+      }
+      setRemarksHistory(await res.json());
+      setHistoryCandidate(candidateName);
+      setShowHistoryModal(true);
+    } catch {
+      toast.error("Failed to load history");
+    }
+  };
+
+  const handleEditLead = (lead) => {
+    setSelectedLead({ ...lead });
+    setIsEditModalOpen(true);
+  };
+
+  const saveLeadEdit = async () => {
+    if (!selectedLead?.id) return;
+    const tid = toast.loading("Saving lead changes...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${selectedLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(selectedLead),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.message || err.msg || "Failed to update lead details", { id: tid });
+        return;
+      }
+
+      toast.success("Lead updated", { id: tid });
+      setIsEditModalOpen(false);
+      fetchLeads(data.page || 1, pageSize);
+    } catch {
+      toast.error("Failed to update lead details", { id: tid });
     }
   };
 
@@ -377,38 +630,97 @@ const BGILeads = () => {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                <th className="p-3">Candidate</th>
-                <th className="p-3">Contact</th>
-                <th className="p-3">Domain</th>
-                <th className="p-3">Status</th>
-                <th className="p-3 text-center">Details</th>
+                <th className="p-3 border-r border-slate-100">Candidate</th>
+                <th className="p-3 border-r border-slate-100">Phone</th>
+                  <th className="p-3 border-r border-slate-100">Domain</th>
+                <th className="p-3 border-r border-slate-100">Category</th>
+                <th className="p-3 border-r border-slate-100">Interest</th>
+                <th className="p-3 border-r border-slate-100">Assigned To</th>
+                <th className="p-3 border-r border-slate-100">Date</th>
+                <th className="p-3 border-r border-slate-100">Status</th>
+                <th className="p-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.leads.length > 0 ? data.leads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-slate-50">
-                  <td className="p-3">
+                  <td className="p-3 border-r border-slate-50">
                     <p className="font-bold text-slate-800">{lead.student_name}</p>
-                    <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`}</p>
+                    <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`} - {lead.domain}</p>
                   </td>
-                  <td className="p-3 text-xs text-slate-600">
-                    <div>{lead.email || "-"}</div>
-                    <div className="font-bold">{lead.phone}</div>
-                  </td>
-                  <td className="p-3 text-xs font-bold text-blue-700">{lead.domain}</td>
-                  <td className="p-3 text-xs">{lead.status}</td>
-                  <td className="p-3 text-center">
-                    <button
-                      onClick={() => goToLeadDetails(lead)}
-                      className="text-[10px] font-black uppercase bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
+                  <td className="p-3 text-xs font-medium text-slate-600 border-r border-slate-50">{lead.phone}</td>
+                   <td className="p-3 text-xs font-medium text-slate-600 border-r border-slate-50">{lead.domain}</td>
+                  <td className="p-3 text-xs font-bold text-slate-700 border-r border-slate-50">{lead.category || "-"}</td>
+                  <td className="p-3 text-xs font-bold text-blue-700 border-r border-slate-50">{lead.interested_in || "-"}</td>
+                  <td className="p-3 border-r border-slate-50">
+                    <select
+                      className="text-[11px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20"
+                      value={lead.assigned_to || ""}
+                      onChange={(e) => {
+                        const selectedStaff = staffList.find((s) => s.id === parseInt(e.target.value, 10));
+                        assignLead(lead.id, e.target.value, selectedStaff?.name);
+                      }}
                     >
-                      View Details
-                    </button>
+                      <option value="">Select Staff</option>
+                      {staffList.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="p-3 text-[11px] font-bold text-slate-500 border-r border-slate-50">
+                    {lead.created_at ? new Date(lead.created_at).toLocaleDateString("en-GB") : "-"}
+                  </td>
+                  <td className="p-3 text-xs border-r border-slate-50">
+                    <div className="flex flex-col gap-1">
+                      <select
+                        value={lead.status || "New"}
+                        onChange={(e) => updateStatus(lead.id, e.target.value, lead.student_name)}
+                        className={`text-[10px] font-black uppercase px-2 py-1 rounded border border-transparent outline-none cursor-pointer ${getStatusStyle(lead.status)}`}
+                      >
+                        <option value="New">New</option>
+                        <option value="Follow Up">Follow Up</option>
+                        <option value="Waiting for Confirmation">Waiting for Confirmation</option>
+                        <option value="Enrolled">Enrolled</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                      <p className="text-[10px] text-slate-500">{lead.email || "-"}</p>
+                    </div>
+                  </td>
+                  <td className="p-3 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => goToLeadDetails(lead)}
+                        className="text-[10px] font-black uppercase bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
+                      >
+                        View Details
+                      </button>
+                      <button
+                        onClick={() => fetchLeadHistory(lead.id, lead.student_name)}
+                        className="inline-flex items-center gap-1 text-[9px] font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition-colors uppercase"
+                        title="History"
+                      >
+                        <History size={10} /> View
+                      </button>
+                      <button
+                        onClick={() => handleEditLead(lead)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                        title="Edit Lead"
+                      >
+                        <Edit size={14} />
+                      </button>
+                      <button
+                        onClick={() => deleteLead(lead.id)}
+                        className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                        title="Delete Lead"
+                      >
+                        <X size={14} className="stroke-[3]" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-slate-400">No leads found.</td>
+                  <td colSpan={9} className="py-16 text-center text-slate-400">No leads found.</td>
                 </tr>
               )}
             </tbody>
@@ -422,8 +734,141 @@ const BGILeads = () => {
           onPageSizeChange={(newSize) => setPageSize(Number(newSize))}
         />
       </div>
+
+      {isEditModalOpen && selectedLead && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+            <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
+              <h3 className="font-black text-slate-800 uppercase tracking-tight">Edit Lead Details</h3>
+              <button onClick={() => setIsEditModalOpen(false)}><X size={20} /></button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase">Student Name</label>
+                <input
+                  className="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 ring-blue-500/20"
+                  value={selectedLead.student_name || ""}
+                  onChange={(e) => setSelectedLead({ ...selectedLead, student_name: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Email</label>
+                  <input
+                    className="w-full p-2 border rounded-lg text-sm"
+                    value={selectedLead.email || ""}
+                    onChange={(e) => setSelectedLead({ ...selectedLead, email: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Phone</label>
+                  <input
+                    className="w-full p-2 border rounded-lg text-sm"
+                    value={selectedLead.phone || ""}
+                    onChange={(e) => setSelectedLead({ ...selectedLead, phone: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Category</label>
+                  <input
+                    className="w-full p-2 border rounded-lg text-sm"
+                    value={selectedLead.category || ""}
+                    onChange={(e) => setSelectedLead({ ...selectedLead, category: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Interested In</label>
+                  <input
+                    className="w-full p-2 border rounded-lg text-sm"
+                    value={selectedLead.interested_in || ""}
+                    onChange={(e) => setSelectedLead({ ...selectedLead, interested_in: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase">Remarks</label>
+                <input
+                  className="w-full p-2 border rounded-lg text-sm"
+                  value={selectedLead.remarks || ""}
+                  onChange={(e) => setSelectedLead({ ...selectedLead, remarks: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t flex gap-3">
+              <button
+                onClick={saveLeadEdit}
+                className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 transition-all"
+              >
+                SAVE CHANGES
+              </button>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="flex-1 bg-white border border-slate-200 py-2 rounded-xl font-bold text-slate-600"
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[999] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="font-black text-slate-800 text-lg">LEAD EDIT HISTORY</h3>
+                <p className="text-xs text-blue-600 font-bold uppercase tracking-wider">{historyCandidate}</p>
+              </div>
+              <button onClick={() => setShowHistoryModal(false)} className="bg-slate-200 hover:bg-slate-300 p-1 rounded-full transition-colors">
+                <X size={20} className="text-slate-600" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4">
+              {remarksHistory.length > 0 ? remarksHistory.map((h, i) => (
+                <div key={i} className="border-l-4 border-blue-500 pl-4 py-1 bg-slate-50/50 p-3 rounded-r-xl">
+                  <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase mb-2">
+                    <span className="text-blue-600">{h.action_type || "UPDATE"} by: {h.changed_by}</span>
+                    <span>{new Date(h.changed_at).toLocaleString()}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-black uppercase mb-1">{h.field_name || "details"}</p>
+                  <p className="text-sm text-slate-700 leading-relaxed font-medium">
+                    <span className="text-slate-400">From:</span> {h.old_value || "-"}
+                  </p>
+                  <p className="text-sm text-slate-700 leading-relaxed font-medium">
+                    <span className="text-slate-400">To:</span> {h.new_value || "-"}
+                  </p>
+                </div>
+              )) : (
+                <p className="text-center text-slate-400 text-sm italic py-10">No history found for this lead.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default BGILeads;
+
+const getStatusStyle = (status) => {
+  switch (status) {
+    case "New":
+      return "bg-blue-100 text-blue-700";
+    case "Follow Up":
+      return "bg-orange-100 text-orange-700";
+    case "Waiting for Confirmation":
+      return "bg-amber-100 text-amber-700";
+    case "Enrolled":
+      return "bg-green-100 text-green-700";
+    case "Closed":
+      return "bg-red-100 text-red-700";
+    default:
+      return "bg-slate-100 text-slate-700";
+  }
+};

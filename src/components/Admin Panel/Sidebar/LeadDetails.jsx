@@ -28,16 +28,24 @@ const LeadDetails = ({ user }) => {
   const [domainStaff, setDomainStaff] = useState([]);
   const [showAddMessage, setShowAddMessage] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
-  const [messageDraft, setMessageDraft] = useState({
-    ref_id: "",
-    subject: "",
-    description: "",
-    recipientUserIds: [],
-  });
+  const [showAllMessages, setShowAllMessages] = useState(false);
+  const [historyData,setHistoryData] = useState([]);
+const [showHistory,setShowHistory] = useState(false);
+
   const AUTO_REFRESH_MS = 30000;
   const recipientPrefKey = `remark_default_recipients_${user?.id || "guest"}`;
 
   const canEditPayments = isAdminTier;
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+ const [messageDraft, setMessageDraft] = useState({
+  ref_id: "",
+  subject: "",
+  description: "",
+  recipientUserIds: [],
+  attachment: null,
+  attachmentName: "",
+  attachmentType: ""
+});
 
   const fetchRemarkMessages = async () => {
     try {
@@ -72,32 +80,45 @@ const LeadDetails = ({ user }) => {
   };
 
   const fetchLead = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      if (!res.ok) {
-        toast.error("Unable to load lead details");
-        setLead(null);
-        return;
-      }
-      const json = await res.json();
-      setLead(json);
-      setRemarksDraft(json.remarks || "");
-      setPaymentDraft({
-        payment_status: json.payment_status || "Unpaid",
-        total_fees: json.total_fees ?? 0,
-        paid_amount: json.paid_amount ?? 0,
-      });
-      await Promise.all([fetchRemarkMessages(), fetchDomainStaff()]);
-    } catch {
+  setLoading(true);
+  try {
+    const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
+
+    if (!res.ok) {
       toast.error("Unable to load lead details");
       setLead(null);
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
+
+    const json = await res.json();
+
+    setLead(json);
+
+    setRemarksDraft(json.remarks || "");
+
+    setPaymentDraft({
+      payment_status: json.payment_status || "Unpaid",
+      total_fees: json.total_fees ?? 0,
+      paid_amount: json.paid_amount ?? 0,
+    });
+
+    // ✅ AUTO SET REF ID = CANDIDATE ID
+  setMessageDraft((prev) => ({
+  ...prev,
+  ref_id: String(json.lead_code || json.id)
+}));
+
+    await Promise.all([fetchRemarkMessages(), fetchDomainStaff()]);
+
+  } catch {
+    toast.error("Unable to load lead details");
+    setLead(null);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchLead();
@@ -154,6 +175,36 @@ const LeadDetails = ({ user }) => {
     }
   };
 
+  const openHistory = async (messageId) => {
+
+  try {
+
+    const res = await fetch(
+      `${API_BASE_URL_PORTAL}/api/leads/remark-history/${messageId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        }
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error("History not found");
+    }
+
+    const json = await res.json();
+
+    setHistoryData(json);
+    setShowHistory(true);
+
+  } catch (err) {
+    console.error(err);
+    toast.error("Failed to load history");
+  }
+
+};
+
+
   const toggleRecipient = (staffId) => {
     const idNum = Number(staffId);
     setMessageDraft((prev) => {
@@ -177,47 +228,83 @@ const LeadDetails = ({ user }) => {
   };
 
   const saveAndSendMessage = async () => {
-    if (!messageDraft.ref_id.trim() || !messageDraft.subject.trim() || !messageDraft.description.trim()) {
-      toast.error("Ref ID, Subject and Description are required");
+
+  if (
+    !String(messageDraft.ref_id).trim() ||
+    !messageDraft.subject.trim() ||
+    !messageDraft.description.trim()
+  ) {
+    toast.error("Ref ID, Subject and Description are required");
+    return;
+  }
+
+  setIsSendingMessage(true);
+
+  const tid = toast.loading("Saving and sending...");
+
+  try {
+
+    const isEditing = Boolean(editingMessageId);
+
+    const endpoint = isEditing
+      ? `${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/${editingMessageId}`
+      : `${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/send`;
+
+    const payload = {
+      ref_id: lead.id,
+      subject: messageDraft.subject,
+      description: messageDraft.description,
+      recipientUserIds: messageDraft.recipientUserIds,
+      attachment_base64: messageDraft.attachment,
+      attachment_name: messageDraft.attachmentName,
+      attachment_type: messageDraft.attachmentType
+    };
+
+    const res = await fetch(endpoint, {
+      method: isEditing ? "PUT" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      toast.error(json.msg || json.error || "Save/Send failed", { id: tid });
       return;
     }
 
-    const tid = toast.loading("Saving and sending...");
-    try {
-      const isEditing = Boolean(editingMessageId);
-      const endpoint = isEditing
-        ? `${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/${editingMessageId}`
-        : `${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/send`;
-      const res = await fetch(endpoint, {
-        method: isEditing ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: JSON.stringify(messageDraft),
-      });
+    toast.success("Message sent successfully", { id: tid });
 
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        await fetchRemarkMessages();
-        toast.error(json.msg || json.error || "Save/Send failed", { id: tid });
-        return;
-      }
+    // reset form
+    setMessageDraft({
+      ref_id: String(lead.lead_code || lead.id),
+      subject: "",
+      description: "",
+      recipientUserIds: messageDraft.recipientUserIds,
+      attachment: null,
+      attachmentName: "",
+      attachmentType: ""
+    });
 
-      toast.success(json.msg || "Saved and sent", { id: tid });
-      setMessageDraft((prev) => ({
-        ref_id: "",
-        subject: "",
-        description: "",
-        recipientUserIds: prev.recipientUserIds,
-      }));
-      setEditingMessageId(null);
-      setShowAddMessage(false);
-      await fetchRemarkMessages();
-    } catch {
-      toast.error("Save/Send failed", { id: tid });
-    }
-  };
+    setShowAddMessage(false);
+    setEditingMessageId(null);
+
+    await fetchRemarkMessages();
+
+  } catch (err) {
+
+    console.error(err);
+    toast.error("Send failed", { id: tid });
+
+  } finally {
+
+    setIsSendingMessage(false);
+
+  }
+};
 
   const startEditMessage = (message) => {
     let ids = [];
@@ -232,7 +319,7 @@ const LeadDetails = ({ user }) => {
     }
 
     setMessageDraft({
-      ref_id: message.ref_id || "",
+      ref_id: lead.id || "",
       subject: message.subject || "",
       description: message.description || "",
       recipientUserIds: ids,
@@ -292,6 +379,10 @@ const LeadDetails = ({ user }) => {
     );
   }
 
+  const visibleMessages = showAllMessages
+  ? remarkMessages
+  : remarkMessages.slice(0, 3);
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
@@ -326,6 +417,7 @@ const LeadDetails = ({ user }) => {
           onChange={(e) => setRemarksDraft(e.target.value)}
           className="w-full min-h-[100px] p-3 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 ring-blue-500/20"
         />
+       
         <button
           onClick={saveRemarks}
           className="px-3 py-2 text-[10px] font-black rounded-lg bg-blue-600 text-white hover:bg-blue-700"
@@ -380,7 +472,7 @@ const LeadDetails = ({ user }) => {
 
       <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-black uppercase text-slate-400">Remark Message Log</p>
+          <p className="text-[10px] font-black uppercase text-slate-400">Message Log</p>
           <button
             onClick={() => {
               fetchRemarkMessages();
@@ -400,7 +492,9 @@ const LeadDetails = ({ user }) => {
                 <th className="p-3">Ref ID</th>
                 <th className="p-3">Subject</th>
                 <th className="p-3">Description</th>
-                <th className="p-3">Date</th>
+                <th className="p-3">Attachment</th>
+<th className="p-3">Created</th>
+<th className="p-3">Last Modified</th>
                 <th className="p-3">Mail</th>
                 <th className="p-3">Actions</th>
               </tr>
@@ -411,13 +505,56 @@ const LeadDetails = ({ user }) => {
                   <td colSpan={6} className="p-4 text-center text-slate-400">No messages yet</td>
                 </tr>
               ) : (
-                remarkMessages.map((m) => (
+                visibleMessages.map((m) => (
                   <tr key={m.id} className="border-t border-slate-100 align-top">
-                    <td className="p-3 font-bold text-slate-700">{m.ref_id}</td>
+                    <td className="p-3 font-bold text-slate-700">{messageDraft.ref_id}</td>
                     <td className="p-3 font-semibold text-slate-700">{m.subject}</td>
                     <td className="p-3 text-slate-600 whitespace-pre-wrap">{m.description}</td>
-                    <td className="p-3 text-slate-500">{new Date(m.created_at).toLocaleString()}</td>
-                    <td className="p-3">
+                   <td className="p-3">
+  {m.attachment_base64 ? (
+
+    m.attachment_type?.startsWith("image") ? (
+
+      <img
+        src={m.attachment_base64}
+        alt={m.attachment_name}
+        className="w-16 h-16 object-cover rounded border cursor-pointer"
+        onClick={() => window.open(m.attachment_base64, "_blank")}
+      />
+
+    ) : m.attachment_type === "application/pdf" ? (
+
+      <a
+        href={m.attachment_base64}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-red-600 font-bold text-xs"
+      >
+        📄 View PDF
+      </a>
+
+    ) : (
+
+      <a
+        href={m.attachment_base64}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 underline text-xs"
+      >
+        Download
+      </a>
+
+    )
+
+  ) : "-"}
+</td>
+<td className="p-3 text-slate-500">
+  {new Date(m.created_at).toLocaleString()}
+</td>
+
+<td className="p-3 text-slate-500">
+  {m.updated_at ? new Date(m.updated_at).toLocaleString() : "-"}
+</td>                    <td className="p-3">
                       <span className={`px-2 py-1 rounded text-[10px] font-black ${m.sent_status === "SENT" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                         {m.sent_status}
                       </span>
@@ -435,20 +572,37 @@ const LeadDetails = ({ user }) => {
                       >
                         Delete
                       </button>
+                      <button
+  onClick={() => openHistory(m.id)}
+  className="mr-2 px-2 py-1 text-[10px] ml-2 font-black rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+>
+  History
+</button>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+          
         </div>
+        {remarkMessages.length > 3 && (
+  <div className="flex justify-end mt-3">
+    <button
+      onClick={() => setShowAllMessages(!showAllMessages)}
+      className="px-4 py-1 text-[10px] font-black rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"
+    >
+      {showAllMessages ? "Show Less" : `Show All (${remarkMessages.length})`}
+    </button>
+  </div>
+)}
 
         {!!lead.remarks?.trim() && (
           <button
             onClick={() => setShowAddMessage((prev) => !prev)}
             className="px-3 py-2 text-[10px] font-black rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
           >
-            {showAddMessage ? "Close Add Remarks" : "Add Remarks"}
+            {showAddMessage ? "Close Add & Send Message" : "Add & Send Message"}
           </button>
         )}
 
@@ -462,27 +616,62 @@ const LeadDetails = ({ user }) => {
                 value={messageDraft.ref_id}
                 onChange={(e) => setMessageDraft((prev) => ({ ...prev, ref_id: e.target.value }))}
                 className="border rounded-lg px-3 py-2 text-sm"
-                placeholder="Ref ID"
+                placeholder="Ref ID *"
               />
               <input
                 value={messageDraft.subject}
                 onChange={(e) => setMessageDraft((prev) => ({ ...prev, subject: e.target.value }))}
                 className="border rounded-lg px-3 py-2 text-sm"
-                placeholder="Subject"
+                placeholder="Subject *"
               />
               <input
                 value={lead.email || ""}
                 disabled
                 className="border rounded-lg px-3 py-2 text-sm bg-slate-100 text-slate-500"
-                placeholder="Candidate Email"
+                placeholder="Candidate Email *"
               />
             </div>
             <textarea
               value={messageDraft.description}
               onChange={(e) => setMessageDraft((prev) => ({ ...prev, description: e.target.value }))}
               className="w-full min-h-[110px] border rounded-lg p-3 text-sm"
-              placeholder="Description / message"
+              placeholder="Description / message *"
             />
+
+            <div>
+  <p className="text-[10px] font-black uppercase text-slate-400 mb-1">
+    Attachment (Optional)
+  </p>
+
+  <input
+    type="file"
+    accept="image/*,.pdf"
+   onChange={(e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    setMessageDraft((prev) => ({
+      ...prev,
+      attachment: reader.result, // base64
+      attachmentName: file.name,
+      attachmentType: file.type
+    }));
+  };
+
+  reader.readAsDataURL(file);
+}}
+    className="text-xs border border-slate-200 rounded-lg p-2 w-full"
+  />
+
+  {messageDraft.attachment && (
+    <p className="text-[10px] text-green-600 mt-1 font-semibold">
+Selected: {messageDraft.attachmentName}
+    </p>
+  )}
+</div>
 
             <div className="border border-slate-200 rounded-lg overflow-x-auto bg-white">
               <table className="w-full text-xs">
@@ -543,16 +732,72 @@ const LeadDetails = ({ user }) => {
             </div>
 
             <button
-              onClick={saveAndSendMessage}
-              className="px-4 py-2 text-[10px] font-black rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-            >
-              {editingMessageId ? "Update And Re-Send" : "Save And Send"}
-            </button>
+  onClick={saveAndSendMessage}
+  disabled={isSendingMessage}
+  className={`px-4 py-2 text-[10px] font-black rounded-lg text-white
+    ${isSendingMessage ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}
+  `}
+>
+  {isSendingMessage ? "Sending..." : editingMessageId ? "Update And Re-Send" : "Save And Send"}
+</button>
           </div>
         )}
       </div>
-    </div>
-  );
+
+     {showHistory && (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl w-[700px] max-h-[80vh] overflow-auto p-5">
+
+          <div className="flex justify-between mb-4">
+            <h3 className="font-bold text-lg">Message History</h3>
+
+            <button
+              onClick={() => setShowHistory(false)}
+              className="text-red-500 font-bold"
+            >
+              Close
+            </button>
+          </div>
+
+          <table className="w-full text-xs border">
+            <thead className="bg-slate-100">
+              <tr>
+                <th className="p-2">Subject</th>
+                <th className="p-2">Description</th>
+                <th className="p-2">Edited By</th>
+                <th className="p-2">Edited At</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {historyData.length === 0 ? (
+                <tr>
+                  <td colSpan="4" className="p-3 text-center text-slate-400">
+                    No history available
+                  </td>
+                </tr>
+              ) : (
+                historyData.map((h) => (
+                  <tr key={h.id} className="border-t">
+                    <td className="p-2">{h.subject}</td>
+                    <td className="p-2 whitespace-pre-wrap">{h.description}</td>
+                    <td className="p-2">{h.edited_by}</td>
+                    <td className="p-2">
+                      {new Date(h.edited_at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+
+        </div>
+      </div>
+    )}
+
+  </div>
+);
+   
 };
 
 const InfoRow = ({ label, value }) => (
@@ -561,5 +806,7 @@ const InfoRow = ({ label, value }) => (
     <p className="text-sm font-semibold text-slate-700 break-words">{value}</p>
   </div>
 );
+
+
 
 export default LeadDetails;

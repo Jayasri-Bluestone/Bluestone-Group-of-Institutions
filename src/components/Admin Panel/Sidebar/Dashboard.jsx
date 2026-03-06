@@ -68,7 +68,16 @@ const Dashboard = ({ user }) => {
             lead?.domainName ||
             user?.domain ||
             '';
-        navigate(`/portal/domain/${getSlug(leadDomain)}`, {
+        if (!lead?.id) return;
+        const slug = getSlug(leadDomain);
+        const status = String(lead.status || '').trim().toLowerCase();
+        let viewQuery = '?view=all';
+        if (status === 'follow up') viewQuery = '?view=lead-status';
+        else if (status.includes('waiting')) viewQuery = '?view=waiting';
+        else if (status === 'closed') viewQuery = '?view=invalid';
+        else if (status === 'enrolled') viewQuery = `?view=lead-status&status=${encodeURIComponent('Enrolled')}`;
+
+        navigate(`/portal/domain/${slug}${viewQuery}`, {
             state: { focusLeadId: lead.id },
         });
     };
@@ -80,23 +89,23 @@ const Dashboard = ({ user }) => {
 
         if (isSuperAdmin) {
             if (cardType === 'totalEnquiry') navigate(`/portal/bgi/all-enquiry${domainQuery}`);
-            if (cardType === 'totalFollowup') navigate(`/portal/bgi/all-enquiry?status=${encodeURIComponent('Follow Up')}${domainQuery ? `&${domainQuery.slice(1)}` : ''}`);
-            if (cardType === 'totalAdmission') navigate(`/portal/bgi/all-enquiry?status=${encodeURIComponent('Enrolled')}${domainQuery ? `&${domainQuery.slice(1)}` : ''}`);
-            if (cardType === 'totalPending') navigate(`/portal/bgi/pendings${domainQuery}`);
+            if (cardType === 'totalFollowup') navigate(`/portal/bgi/lead-status${domainQuery}`);
+            if (cardType === 'totalAdmission') navigate(`/portal/bgi/lead-status${domainQuery ? `${domainQuery}&status=${encodeURIComponent('Enrolled')}` : `?status=${encodeURIComponent('Enrolled')}`}`);
+            if (cardType === 'totalPending') navigate(`/portal/bgi/waiting-confirmation${domainQuery}`);
             if (cardType === 'totalInvalid') navigate(`/portal/bgi/invalid-enquiries${domainQuery}`);
-            if (cardType === 'todayPending') navigate(`/portal/bgi/pendings?today=1${domainQuery ? `&${domainQuery.slice(1)}` : ''}`);
+            if (cardType === 'todayPending') navigate(`/portal/bgi/waiting-confirmation?today=1${domainQuery ? `&${domainQuery.slice(1)}` : ''}`);
             if (cardType === 'todayInvalid') navigate(`/portal/bgi/invalid-enquiries?today=1${domainQuery ? `&${domainQuery.slice(1)}` : ''}`);
             return;
         }
 
         // Non-super-admin: open their domain table
         const slug = getSlug(user.domain);
-        if (cardType === 'totalFollowup') navigate(`/portal/domain/${slug}?status=${encodeURIComponent('Follow Up')}`);
-        else if (cardType === 'totalAdmission') navigate(`/portal/domain/${slug}?status=${encodeURIComponent('Enrolled')}`);
-        else if (cardType === 'totalPending') navigate(`/portal/domain/${slug}?pending=1`);
-        else if (cardType === 'totalInvalid') navigate(`/portal/domain/${slug}?status=${encodeURIComponent('Closed')}`);
-        else if (cardType === 'todayInvalid') navigate(`/portal/domain/${slug}?status=${encodeURIComponent('Closed')}&today=1`);
-        else if (cardType === 'todayPending') navigate(`/portal/domain/${slug}?pending=1&today=1`);
+        if (cardType === 'totalFollowup') navigate(`/portal/domain/${slug}?view=lead-status`);
+        else if (cardType === 'totalAdmission') navigate(`/portal/domain/${slug}?view=lead-status&status=${encodeURIComponent('Enrolled')}`);
+        else if (cardType === 'totalPending') navigate(`/portal/domain/${slug}?view=waiting`);
+        else if (cardType === 'totalInvalid') navigate(`/portal/domain/${slug}?view=invalid`);
+        else if (cardType === 'todayInvalid') navigate(`/portal/domain/${slug}?view=invalid&today=1`);
+        else if (cardType === 'todayPending') navigate(`/portal/domain/${slug}?view=waiting&today=1`);
         else navigate(`/portal/domain/${slug}`);
     };
 
@@ -123,7 +132,16 @@ const Dashboard = ({ user }) => {
             fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             })
-            .then(res => res.json()).then(setDomains).catch(console.error);
+            .then(res => res.json())
+            .then((json) => {
+                const domainNames = Array.isArray(json)
+                    ? json
+                        .map((d) => (typeof d === 'string' ? d : d?.name))
+                        .filter(Boolean)
+                    : [];
+                setDomains(domainNames);
+            })
+            .catch(console.error);
         }
     }, [isSuperAdmin]);
 
@@ -225,10 +243,19 @@ const Dashboard = ({ user }) => {
                 todayInvalid,
             });
 
-            await Promise.all([
-                fetchListLeads('today', domain),
-                fetchListLeads('updated', domain),
-            ]);
+            await fetchListLeads('today', domain);
+
+            const todayConvertedRows = allEnquiries.filter((lead) => {
+                const st = String(lead.status || '').trim().toLowerCase();
+                if (st === 'new') return false;
+                const d = new Date(lead.created_at);
+                return (
+                    d.getFullYear() === now.getFullYear() &&
+                    d.getMonth() === now.getMonth() &&
+                    d.getDate() === now.getDate()
+                );
+            });
+            setStatusLeads(todayConvertedRows);
         } finally {
             if (showLoading) setIsLoading(false);
         }
@@ -274,9 +301,17 @@ const Dashboard = ({ user }) => {
                 {isSuperAdmin && (
                     <div className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl shadow-sm">
                         <Filter size={14} className="text-slate-400" />
-                        <select value={globalFilter} onChange={(e) => setGlobalFilter(e.target.value)} className="bg-transparent font-bold text-xs outline-none">
+                        <select
+                            value={globalFilter}
+                            onChange={(e) => {
+                                const selected = e.target.value;
+                                setGlobalFilter(selected);
+                                setAppliedGlobalFilter(selected);
+                            }}
+                            className="bg-transparent font-bold text-xs outline-none"
+                        >
                             <option value="All">All Domains</option>
-                            {domains.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                            {domains.map((d) => <option key={d} value={d}>{d}</option>)}
                         </select>
                     </div>
                 )}
@@ -343,7 +378,7 @@ const Dashboard = ({ user }) => {
                     onRefresh={() => refreshDashboardData(false)}
                 />
                 <LeadList 
-                    title="Leads Status" data={statusLeads} icon={<AlertCircle className="text-red-600"/>} color="bg-red-50" badgeColor="bg-red-600"
+                    title="Today's Enquiry Status" data={statusLeads} icon={<AlertCircle className="text-red-600"/>} color="bg-red-50" badgeColor="bg-red-600"
                     currentPage={statusPage} setCurrentPage={setStatusPage} pageSize={statusLimit} setPageSize={setStatusLimit} userTier={getTier(user)}
                     showRemarks={true}
                     onLeadClick={handleLeadClick}
@@ -370,14 +405,26 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
     const [showAllRows, setShowAllRows] = useState(false);
 
     const safeData = Array.isArray(data) ? data : [];
-    const q = searchTerm.toLowerCase();
-    const filteredData = safeData.filter(lead => 
-        lead.student_name.toLowerCase().includes(q) ||
-        (lead.email && lead.email.toLowerCase().includes(q)) ||
-        lead.phone.includes(searchTerm) ||
-        String(lead.id || '').includes(searchTerm) ||
-        String(lead.lead_code || '').toLowerCase().includes(q)
-    );
+const q = searchTerm.trim().toLowerCase();
+const filteredData = safeData.filter((lead) => {
+    const searchable = [
+        lead?.student_name,
+        lead?.email,
+        lead?.phone,
+        lead?.lead_code,
+        lead?.status,
+        lead?.domain,
+        lead?.assigned_to_name,
+        lead?.assigned_by_name
+    ]
+        .map(v => String(v || "").toLowerCase())
+        .join(" ");
+
+    return searchable.includes(q);
+});
+
+console.log("Leads Data:", safeData);
+console.log("Search:", searchTerm);
 
     const totalPages = Math.max(Math.ceil(filteredData.length / pageSize), 1);
     const paginatedData = showAllRows

@@ -14,10 +14,9 @@ import {
   Search,
   UserPlus,
   Calendar,
-  Bell,
+  Bell,X,
   LogOut,
   Menu,
-  X,
   User,
   Database,
   Layers,
@@ -71,6 +70,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [showNotiPanel, setShowNotiPanel] = useState(false);
   const [openDomainMenus, setOpenDomainMenus] = useState({});
+  const [menuRefreshNonce, setMenuRefreshNonce] = useState(0);
 
   // Data States
   const [masterData, setMasterData] = useState([]);
@@ -128,6 +128,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const [notiDateCounts, setNotiDateCounts] = useState({});
   const [hasNewNoti, setHasNewNoti] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [notiTotalCount, setNotiTotalCount] = useState(0);
 
   const [profileData, setProfileData] = useState({
     name: user?.name || "",
@@ -206,7 +207,11 @@ const fetchAllNotifications = async () => {
         if (key) map[key] = Number(row.count || 0);
       });
 
-      setNotiDateCounts(map);
+setNotiDateCounts(map);
+
+// calculate total count for bell badge
+const total = Object.values(map).reduce((a, b) => a + b, 0);
+setNotiTotalCount(total);
     }
 
   } catch (err) {
@@ -385,6 +390,27 @@ useEffect(() => {
     return icons[domainName] || <Layers size={20} />;
   };
 
+   const handleLeadClick = (lead) => {
+        const leadDomain =
+            lead?.domain ||
+            lead?.domain_name ||
+            lead?.domainName ||
+            user?.domain ||
+            '';
+        if (!lead?.id) return;
+        const slug = getSlug(leadDomain);
+        const status = String(lead.status || '').trim().toLowerCase();
+        let viewQuery = '?view=all';
+        if (status === 'follow up') viewQuery = '?view=lead-status';
+        else if (status.includes('waiting')) viewQuery = '?view=waiting';
+        else if (status === 'closed') viewQuery = '?view=invalid';
+        else if (status === 'enrolled') viewQuery = `?view=lead-status&status=${encodeURIComponent('Enrolled')}`;
+
+        navigate(`/portal/domain/${slug}${viewQuery}`, {
+            state: { focusLeadId: lead.id },
+        });
+    };
+
   const getDomainMenuIcon = (domain) => {
     if (domain?.icon_type === "logo" && domain?.logo_url) {
       return (
@@ -461,16 +487,17 @@ useEffect(() => {
     },
   ].filter((item) => item.visible);
   const bgiSubMenu = [
-    { name: "All Enquiries/Leads", path: "/portal/bgi/all-enquiry" },
-    { name: "Pending Enquiries", path: "/portal/bgi/pendings" },
-    { name: "Payment Status", path: "/portal/bgi/payment-status" },
-    { name: "Invalid Enquiries", path: "/portal/bgi/invalid-enquiries" },
+    { name: "All Enquiries", path: "/portal/bgi/all-enquiry" },
+    { name: "All Leads Status", path: "/portal/bgi/lead-status" },
+    { name: "Waiting for Confirmation", path: "/portal/bgi/waiting-confirmation" },
+    { name: "All Payment Status", path: "/portal/bgi/payment-status" },
+    { name: "All Invalid Enquiries", path: "/portal/bgi/invalid-enquiries" },
   ];
 
   const buildDomainSubMenu = (domainPath) => [
-    { name: "All Enquiry/Leads", path: `${domainPath}?view=all` },
+    { name: "All Enquiries", path: `${domainPath}?view=all` },
     { name: "All Leads Status", path: `${domainPath}?view=lead-status` },
-    { name: "All Pendings", path: `${domainPath}?view=pending` },
+    { name: "Waiting for Confirmation", path: `${domainPath}?view=waiting` },
     { name: "All Payment Status", path: `${domainPath}?view=payment` },
     { name: "All Invalid Enquiries", path: `${domainPath}?view=invalid` },
   ];
@@ -487,14 +514,23 @@ useEffect(() => {
     return true;
   };
 
+  const triggerMenuRefresh = () => {
+    setMenuRefreshNonce((prev) => prev + 1);
+  };
+
   useEffect(() => {
-    if (location.pathname.startsWith("/portal/bgi/")) setIsBgiMenuOpen(true);
+    if (location.pathname.startsWith("/portal/bgi/")) {
+      setIsBgiMenuOpen(true);
+      setOpenDomainMenus({});
+    }
   }, [location.pathname]);
 
   useEffect(() => {
     if (!location.pathname.startsWith("/portal/domain/")) return;
-    const currentPath = location.pathname;
-    setOpenDomainMenus((prev) => ({ ...prev, [currentPath]: true }));
+    const pathParts = location.pathname.split("/").filter(Boolean);
+    const domainRootPath = `/${pathParts.slice(0, 3).join("/")}`;
+    setOpenDomainMenus({ [domainRootPath]: true });
+    setIsBgiMenuOpen(false);
   }, [location.pathname]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -610,6 +646,9 @@ useEffect(() => {
     }
   };
 
+  const todayKey = new Date().toISOString().split("T")[0];
+const todayNotiCount = Number(notiDateCounts[todayKey] || 0);
+
   return (
     <div className="portal-theme flex h-screen bg-slate-50 overflow-hidden font-sans">
       {/* Sidebar */}
@@ -627,7 +666,7 @@ useEffect(() => {
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="text-slate-40 hover:text-white"
           >
-            {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            {isSidebarOpen ? <ChevronLeft size={30} /> : <Menu size={30} />}
           </button>
         </div>
         <nav className="flex-1 overflow-y-auto py-4 space-y-1">
@@ -637,6 +676,7 @@ useEffect(() => {
             <Link
               key={item.path}
               to={item.path}
+              onClick={triggerMenuRefresh}
               className={`flex items-center gap-4 px-6 py-3 transition-colors ${location.pathname === item.path ? "bg-white text-black" : "hover:bg-white/50 hover:text-black/70"}`}
             >
               <div
@@ -657,7 +697,13 @@ useEffect(() => {
           {isSuperAdmin && (
             <div>
               <button
-                onClick={() => setIsBgiMenuOpen((prev) => !prev)}
+                onClick={() =>
+                  setIsBgiMenuOpen((prev) => {
+                    const next = !prev;
+                    if (next) setOpenDomainMenus({});
+                    return next;
+                  })
+                }
                 className={`w-full flex items-center gap-4 px-6 py-3 transition-colors ${
                   location.pathname.startsWith("/portal/bgi/")
                     ? "bg-red-600/20 text-white"
@@ -683,8 +729,9 @@ useEffect(() => {
                     <Link
                       key={sub.path}
                       to={sub.path}
+                      onClick={triggerMenuRefresh}
                       className={`block px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
-                        location.pathname === sub.path
+                        isSubMenuPathActive(sub.path)
                           ? "bg-white text-black"
                           : "text-black hover:bg-white/50 hover:text-black/70"
                       }`}
@@ -706,6 +753,7 @@ useEffect(() => {
                   <Link
                     key={item.path}
                     to={item.path}
+                    onClick={triggerMenuRefresh}
                     className={`flex items-center gap-4 px-6 py-3 transition-colors ${
                       location.pathname === item.path ? "bg-white text-black" : "hover:bg-white/50 hover:text-black/70"
                     }`}
@@ -732,6 +780,7 @@ useEffect(() => {
                   <Link
                     key={item.path}
                     to={item.path}
+                    onClick={triggerMenuRefresh}
                     className={`flex items-center justify-center px-2 py-3 transition-colors ${
                       isDomainGroupActive ? "bg-white text-black" : "hover:bg-white/50 hover:text-black/70"
                     }`}
@@ -748,9 +797,10 @@ useEffect(() => {
                 <div key={item.path}>
                   <button
                     type="button"
-                    onClick={() =>
-                      setOpenDomainMenus((prev) => ({ ...prev, [item.path]: !isOpen }))
-                    }
+                    onClick={() => {
+                      setOpenDomainMenus(isOpen ? {} : { [item.path]: true });
+                      setIsBgiMenuOpen(false);
+                    }}
                     className={`w-full flex items-center gap-4 px-6 py-3 transition-colors ${
                       isDomainGroupActive ? "bg-white/20 text-white" : "hover:bg-white/70 hover:text-black/70"
                     }`}
@@ -765,6 +815,7 @@ useEffect(() => {
                         <Link
                           key={sub.path}
                           to={sub.path}
+                          onClick={triggerMenuRefresh}
                           className={`block px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
                             isSubMenuPathActive(sub.path)
                               ? "bg-white text-black"
@@ -825,13 +876,7 @@ useEffect(() => {
                       {searchResults.map((lead) => (
                         <button
                           key={lead.id}
-                          onClick={() => {
-                            navigate(`/portal/domain/${getSlug(lead.domain)}`, {
-                              state: { focusLeadId: lead.id },
-                            });
-                            setSearchQuery("");
-                            setShowDropdown(false);
-                          }}
+    onClick={() => handleLeadClick(lead)}
                           className="w-full text-left p-3 hover:bg-red-50 border-b last:border-0 flex items-center justify-between group transition-colors"
                         >
                           <div>
@@ -905,9 +950,12 @@ onMouseEnter={() => {
                 className={`relative p-2 rounded-full transition-all ${showNotiPanel ? "bg-red-50 text-red-600" : "hover:bg-slate-100 text-slate-500"}`}
               >
                 <Bell size={20} />
-                {hasNewNoti && (
-                  <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full animate-pulse"></span>
-                )}
+              {todayNotiCount > 0 && (
+  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center border border-white">
+    {todayNotiCount > 9 ? "9+" : todayNotiCount}
+  </span>
+)}
+
               </button>
               {showNotiPanel && (
                 <div className="absolute top-full right-0 w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[110] overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -979,6 +1027,7 @@ onMouseEnter={() => {
   // Show message count badge on each date that has notifications
   const dayCount = Number(notiDateCounts[dateKey] || 0);
   const hasBadge = dayCount > 0;
+  
   const isSelected = selectedNotiDate === dateKey;
 
   return (
@@ -987,15 +1036,18 @@ onMouseEnter={() => {
       onClick={() => {
         setSelectedNotiDate(dateKey);
       }}
-      className={`h-8 w-full rounded text-[10px] font-bold relative transition-colors ${
-        isSelected ? "bg-red-600 text-white" : "text-slate-200 hover:bg-slate-700"
-      }`}
+className={`h-8 w-full rounded text-[10px] font-bold relative transition-colors
+${isSelected
+  ? "bg-red-600 text-white"
+  : hasBadge
+  ? "bg-red-900/40 text-white"
+  : "text-slate-200 hover:bg-slate-700"
+}`}
     >
       {day}
       {/* Date-wise message count badge */}
       {hasBadge && (
-        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-red-500 text-white border border-slate-800 text-[8px] leading-[12px] font-black flex items-center justify-center">
-          {dayCount > 9 ? "9+" : dayCount}
+<span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-600 text-white border border-slate-800 text-[9px] font-bold flex items-center justify-center">          {dayCount > 9 ? "9+" : dayCount}
         </span>
       )}
     </button>
@@ -1084,7 +1136,9 @@ onMouseEnter={() => {
           </div>
         </header>
 
-        <main className="portal-content flex-1 overflow-y-auto p-8"><Outlet /></main>
+        <main className="portal-content flex-1 overflow-y-auto p-8">
+          <Outlet key={`${location.pathname}${location.search}-${menuRefreshNonce}`} />
+        </main>
       </div>
 
       {/* --- Dynamic Enquiry Modal --- */}

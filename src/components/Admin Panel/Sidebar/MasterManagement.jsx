@@ -42,6 +42,7 @@ const getReactIconComponentByKey = (iconKey) => {
 };
 
 const MasterManagement = () => {
+  const AUTO_REFRESH_MS = 30000;
   const [data, setData] = useState([]);
   const [activeTab, setActiveTab] = useState('domain_setup');
   const [hierarchy, setHierarchy] = useState([]);
@@ -109,6 +110,14 @@ const MasterManagement = () => {
 
   useEffect(() => {
     fetchHierarchy();
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchAll();
+      fetchHierarchy();
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
   }, []);
 
   const addHierarchyRole = async () => {
