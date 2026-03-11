@@ -4,6 +4,7 @@ import { toast } from "react-hot-toast";
 import { RefreshCcw } from "lucide-react";
 import LoadingScreen from "../Layout/LoadingScreen";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
+import { confirmToast } from "../../../utils/toastConfirm";
 
 const LeadDetails = ({ user }) => {
   const getTier = (u) => {
@@ -32,7 +33,7 @@ const LeadDetails = ({ user }) => {
   const [historyData,setHistoryData] = useState([]);
 const [showHistory,setShowHistory] = useState(false);
 
-  const AUTO_REFRESH_MS = 30000;
+  const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
   const recipientPrefKey = `remark_default_recipients_${user?.id || "guest"}`;
 
   const canEditPayments = isAdminTier;
@@ -309,20 +310,23 @@ const [showHistory,setShowHistory] = useState(false);
   const startEditMessage = (message) => {
     let ids = [];
     try {
-      const parsed = JSON.parse(message.recipient_user_ids || "[]");
+      const parsed = JSON.parse(lead.ids || "[]");
       ids = Array.isArray(parsed) ? parsed.map((v) => Number(v)).filter((v) => Number.isInteger(v)) : [];
     } catch {
-      ids = String(message.recipient_user_ids || "")
+      ids = String(lead.id || "")
         .split(",")
         .map((v) => Number(v.trim()))
         .filter((v) => Number.isInteger(v) && v > 0);
     }
 
     setMessageDraft({
-      ref_id: lead.id || "",
+      ref_id: lead.lead_code || lead.id || "",
       subject: message.subject || "",
       description: message.description || "",
       recipientUserIds: ids,
+      attachment: message.attachment_base64 || null,
+      attachmentName: message.attachment_name || "",
+      attachmentType: message.attachment_type || ""
     });
     setEditingMessageId(message.id);
     setShowAddMessage(true);
@@ -350,6 +354,9 @@ const [showHistory,setShowHistory] = useState(false);
   }, [domainStaff, editingMessageId, recipientPrefKey]);
 
   const deleteMessage = async (messageId) => {
+    if (!(await confirmToast("Are you sure you want to delete this message?"))) {
+      return;
+    }
     const tid = toast.loading("Deleting message...");
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/${messageId}`, {
@@ -614,8 +621,8 @@ const [showHistory,setShowHistory] = useState(false);
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <input
                 value={messageDraft.ref_id}
-                onChange={(e) => setMessageDraft((prev) => ({ ...prev, ref_id: e.target.value }))}
-                className="border rounded-lg px-3 py-2 text-sm"
+                disabled
+                className="border rounded-lg px-3 py-2 text-sm bg-slate-100 text-slate-500"
                 placeholder="Ref ID *"
               />
               <input

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { 
@@ -9,15 +9,29 @@ import {
 import Pagination from '../Layout/Pagination';
 import LoadingScreen from '../Layout/LoadingScreen';
 import { confirmToast } from '../../../utils/toastConfirm';
+import { exportToCsv } from '../../../utils/exportCsv';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
-
-
 const DomainPage = ({ domain, user }) => {
     const getTier = (u) => {
         if (u?.tier) return u.tier;
         if (['Main Admin', 'MD', 'GM'].includes(u?.role)) return 'SUPER_ADMIN';
         if (['TL', 'Coordinator', 'Head'].includes(u?.role)) return 'ADMIN';
         return 'STAFF';
+    };
+    const getSlug = (name = '') => {
+        const cleanName = String(name || '').trim();
+        const normalized = cleanName.toLowerCase().replace(/^bluestone\s+/, '');
+        const mapping = {
+            'ias academy': 'ias',
+            'techpark': 'techpark',
+            'overseas': 'overseas',
+            'placements': 'placements',
+            'language hub': 'languages',
+            'elite sports': 'sports',
+            'preschool': 'preschool',
+            'startup': 'startup',
+        };
+        return mapping[normalized] || normalized.replace(/\s+/g, '-');
     };
     const isSuperAdmin = getTier(user) === 'SUPER_ADMIN';
     const isAdminTier = getTier(user) === 'ADMIN' || isSuperAdmin;
@@ -48,25 +62,31 @@ const DomainPage = ({ domain, user }) => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedLead, setSelectedLead] = useState(null);
     const [masterData, setMasterData] = useState([]);
+    const [selectedLeadIds, setSelectedLeadIds] = useState([]);
 const [categoryFilter, setCategoryFilter] = useState('All');
 const [interestFilter, setInterestFilter] = useState('All');
-const AUTO_REFRESH_MS = 30000;
-
-
+const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
    const fetchDomainData = useCallback(async (page = 1, limit = pageSize, options = {}) => {
     const { silent = false } = options;
     const requestId = ++requestSeqRef.current;
     if (!silent) setLoading(true);
-
     try {
         const token = localStorage.getItem('token');
+        const getUserDomains = (domainStr) => {
+            if (!domainStr) return [];
+            return domainStr.split(',').map(d => d.trim()).filter(Boolean);
+        };
+        const userDomainsList = getUserDomains(user?.domain);
+        // Normalize a domain name for comparison (lowercase, strip "Bluestone " prefix)
+       // NEW: normalized full-name comparison (case-insensitive, alias-aware)
+const normalizeName = (n = '') => n.toLowerCase().replace(/^bluestone /, '');
+const hasAccess = isSuperAdmin || userDomainsList.some(d => 
+    normalizeName(d) === normalizeName(domain) // "overseas" === "overseas" ✅
+);
 
-        // ✅ SUPER ADMIN → use URL domain
-        // ✅ OTHERS → force their own domain
-        const finalDomain = isSuperAdmin
+        const finalDomain = hasAccess
             ? domain
-            : user.domain;
-
+            : (userDomainsList.length > 0 ? userDomainsList[0] : user.domain);
         const isWaitingView = viewMode === 'waiting';
         const isPaymentView = viewMode === 'payment';
         if (isWaitingView || isPaymentView) {
@@ -77,20 +97,16 @@ const AUTO_REFRESH_MS = 30000;
             if (categoryFilter !== 'All') params.set('category', categoryFilter);
             if (interestFilter !== 'All') params.set('interest', interestFilter);
             if (searchTerm.trim()) params.set('search', searchTerm.trim());
-
             const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-
             if (res.status === 403) {
                 console.error("Access denied");
                 return;
             }
-
             const result = await res.json();
             if (!res.ok) return;
-
             let rows = Array.isArray(result.leads) ? result.leads : [];
             rows = rows.filter((lead) => {
                 const st = String(lead.status || '').trim().toLowerCase();
@@ -104,14 +120,12 @@ const AUTO_REFRESH_MS = 30000;
                 }
                 return true;
             });
-
             const total = rows.length;
             const safeLimit = Math.max(Number(limit) || 10, 1);
             const totalPages = Math.max(Math.ceil(total / safeLimit), 1);
             const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
             const start = (safePage - 1) * safeLimit;
             const pagedRows = rows.slice(start, start + safeLimit);
-
             if (requestId !== requestSeqRef.current) return;
             setData({
                 leads: pagedRows,
@@ -121,43 +135,27 @@ const AUTO_REFRESH_MS = 30000;
             });
             return;
         }
-
         const params = new URLSearchParams({
             page: String(page),
             limit: String(limit)
         });
-
         if (categoryFilter !== 'All') params.set('category', categoryFilter);
         if (interestFilter !== 'All') params.set('interest', interestFilter);
-        const viewStatusMap = {
-            all: 'New',
-            'lead-status': 'Follow Up',
-            invalid: 'Closed',
-        };
-        const forcedStatusByView = viewStatusMap[viewMode];
-        if (forcedStatusByView) {
-            params.set('status', forcedStatusByView);
-        } else if (statusFilter !== 'All') {
+        if (statusFilter !== 'All') {
             params.set('status', statusFilter);
         }
         if (searchTerm.trim()) params.set('search', searchTerm.trim());
-
         const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
-
         const res = await fetch(url, {
             headers: { Authorization: `Bearer ${token}` }
         });
-
         if (res.status === 403) {
             console.error("❌ Access denied");
             return;
         }
-
         const result = await res.json();
-
         if (res.ok) {
             const pagination = result.pagination || {};
-
             if (requestId !== requestSeqRef.current) return;
             setData({
                 leads: result.leads || [],
@@ -166,47 +164,54 @@ const AUTO_REFRESH_MS = 30000;
                 total: pagination.total || 0
             });
         }
-
     } catch (err) {
         console.error("Fetch failed:", err);
     } finally {
         if (requestId === requestSeqRef.current) setLoading(false);
     }
 }, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm, viewMode]);
-
 useEffect(() => {
-    if (!isSuperAdmin) {
-        if (domain !== user.domain) {
-            navigate(`/portal/domain/${user.domain}`);
-        }
+    if (isSuperAdmin) return; // Super admin can access any domain
+    const getUserDomains = (domainStr) => {
+        if (!domainStr) return [];
+        return domainStr.split(',').map(d => d.trim()).filter(Boolean);
+    };
+    const userDomainsList = getUserDomains(user?.domain);
+    if (userDomainsList.length === 0) return;
+    // `domain` prop is a full name like "Bluestone Overseas"
+    // Compare using normalized names (lowercase, strip "Bluestone " prefix)
+    const normalizeName = (n = '') => String(n).toLowerCase().replace(/^bluestone\s+/, '');
+    const hasAccess = userDomainsList.some(d => normalizeName(d) === normalizeName(domain));
+    if (!hasAccess) {
+        // Redirect to the user's first assigned domain
+        const fallback = userDomainsList[0];
+        const fallbackSlug = getSlug(fallback);
+        navigate(`/portal/domain/${fallbackSlug}`, { replace: true });
     }
 }, [domain, user, navigate, isSuperAdmin]);
-
-
 const fetchStaff = useCallback(async () => {
     if (!isAdminTier) return;
     try {
-        const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff-list`, {
+        // Pass the current domain page so backend filters staff by this domain only
+        const domainParam = encodeURIComponent(domain || '');
+        const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff-list?domain=${domainParam}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         if (res.ok) setStaffList(await res.json());
     } catch (err) { 
         console.error(err); 
     }
-}, [isAdminTier]);
-
+}, [isAdminTier, domain]);
     useEffect(() => {
         fetchDomainData();
         fetchStaff();
     }, [fetchDomainData, fetchStaff]);
-
     useEffect(() => {
         const timer = setInterval(() => {
             fetchDomainData(data.page || 1, pageSize, { silent: true });
         }, AUTO_REFRESH_MS);
         return () => clearInterval(timer);
     }, [fetchDomainData, data.page, pageSize]);
-
 const resetFilters = () => {
     setSearchTerm('');
     setStatusFilter('All');
@@ -215,36 +220,41 @@ const resetFilters = () => {
     setPendingOnly(false);
     setTodayOnly(false);
 };
-
-
     const deleteLead = async (id) => {
-        const confirmed = await confirmToast("Delete this lead?", "Delete");
-        if (!confirmed) return;
+        return deleteLeadById(id);
+    };
 
-        const tid = toast.loading("Deleting lead...");
+    const deleteLeadById = async (id, options = {}) => {
+        const { skipConfirm = false, suppressRefresh = false, suppressToast = false } = options;
+        if (!skipConfirm) {
+            const confirmed = await confirmToast("Delete this lead?", "Delete");
+            if (!confirmed) return false;
+        }
+        const tid = suppressToast ? null : toast.loading("Deleting lead...");
         try {
             const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             if (res.ok) {
-                toast.success("Lead deleted successfully", { id: tid });
-                fetchDomainData(data.page);
+                if (!suppressToast) toast.success("Lead deleted successfully", { id: tid });
+                if (!suppressRefresh) fetchDomainData(data.page);
+                return true;
             } else {
                 const error = await res.json();
-                toast.error(error.message || "Delete failed", { id: tid });
+                if (!suppressToast) toast.error(error.message || "Delete failed", { id: tid });
+                return false;
             }
         } catch (err) {
             console.error("Delete Error:", err);
-            toast.error("Delete failed", { id: tid });
+            if (!suppressToast) toast.error("Delete failed", { id: tid });
+            return false;
         }
     };
-
     const handleEditLead = (lead) => {
         setSelectedLead({ ...lead });
         setIsEditModalOpen(true);
     };
-
     const saveLeadEdit = async () => {
         const tid = toast.loading("Saving lead changes...");
         try {
@@ -256,7 +266,6 @@ const resetFilters = () => {
                 },
                 body: JSON.stringify(selectedLead)
             });
-
             if (res.ok) {
                 setIsEditModalOpen(false);
                 toast.success("Lead updated", { id: tid });
@@ -270,23 +279,18 @@ const resetFilters = () => {
             toast.error("Failed to update lead details", { id: tid });
         }
     };
-
-
-
     useEffect(() => {
         const qp = new URLSearchParams(location.search);
         const statusQ = qp.get('status');
         const pendingQ = qp.get('pending');
         const todayQ = qp.get('today');
         const viewQ = qp.get('view');
-
         setStatusFilter(statusQ || 'All');
         setPendingOnly(pendingQ === '1');
         setTodayOnly(todayQ === '1');
         const normalizedView = (viewQ || 'all').toLowerCase();
         setViewMode(normalizedView === 'pending' ? 'waiting' : normalizedView);
     }, [location.search]);
-
     useEffect(() => {
         if (!focusLeadId || hasFocusedLeadRef.current || data.leads.length === 0) return;
         const match = data.leads.find((lead) => lead.id === focusLeadId);
@@ -298,7 +302,6 @@ const resetFilters = () => {
             }
         }
     }, [focusLeadId, data.leads]);
-
     const updateStatus = async (leadId, newStatus, customSuccessMessage = null, leadName = '') => {
         const confirmed = await confirmToast(
             `Move ${leadName ? `"${leadName}" ` : ''}to ${newStatus}?`,
@@ -331,7 +334,6 @@ const resetFilters = () => {
             return false;
         }
     };
-
     const assignLead = async (leadId, staffId, staffName) => {
         const tid = toast.loading("Assigning lead...");
         try {
@@ -351,7 +353,6 @@ const resetFilters = () => {
             toast.error("Assignment failed", { id: tid });
         }
     };
-
     const fetchLeadHistory = async (leadId, candidateName) => {
         try {
             const res = await fetch(`${API_BASE_URL_PORTAL}/api/history/leads/${leadId}`, {
@@ -373,32 +374,24 @@ const resetFilters = () => {
             setShowHistoryModal(true);
         } catch (err) { console.error(err); }
     };
-
     const filteredLeads = data.leads.filter(lead => {
     const q = searchTerm.toLowerCase();
     const leadStatus = String(lead.status || '').trim().toLowerCase();
     const leadPayment = String(lead.payment_status || '').trim().toLowerCase();
-
     const matchesSearch =
         lead.student_name.toLowerCase().includes(q) ||
         lead.phone.includes(searchTerm) ||
         (lead.email || '').toLowerCase().includes(q);
-
     const normalizedStatusFilter = String(statusFilter || 'All').trim().toLowerCase();
     const matchesStatus =
         normalizedStatusFilter === 'all' || leadStatus === normalizedStatusFilter;
-
     const matchesCategory =
         categoryFilter === 'All' || lead.category === categoryFilter;
-
     const matchesInterest =
         interestFilter === 'All' || lead.interested_in === interestFilter;
-
     const hasAssignedStaff = Boolean(lead.assigned_to || lead.assigned_to_name);
     const isPendingLead = !hasAssignedStaff;
-
     const matchesPending = !pendingOnly || isPendingLead;
-
     const matchesToday = !todayOnly || (() => {
         if (!lead.created_at) return false;
         const leadDate = new Date(lead.created_at);
@@ -409,10 +402,9 @@ const resetFilters = () => {
             leadDate.getDate() === now.getDate()
         );
     })();
-
     const matchesViewMode = (() => {
-        if (viewMode === 'all') return leadStatus === 'new';
-        if (viewMode === 'lead-status') return leadStatus === 'follow up';
+        if (viewMode === 'all') return true;
+        if (viewMode === 'lead-status') return leadStatus === 'follow up' || leadStatus === 'enrolled';
         if (viewMode === 'waiting') {
             const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
             return leadStatus.includes('waiting') || !knownNonWaiting.includes(leadStatus);
@@ -423,7 +415,6 @@ const resetFilters = () => {
         }
         return true;
     })();
-
     return (
         matchesSearch &&
         matchesStatus &&
@@ -434,9 +425,7 @@ const resetFilters = () => {
         matchesViewMode
     );
 });
-
    
-
 const fetchMaster = useCallback(async () => {
     try {
         const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`);
@@ -446,23 +435,17 @@ const fetchMaster = useCallback(async () => {
         console.error("Master fetch failed", err);
     }
 }, []);
-
 useEffect(() => {
     fetchMaster();
 }, [fetchMaster]);
-
 const domainMaster = masterData.find(
     d => d.name?.toLowerCase() === domain?.toLowerCase()
 );
-
 const categories = domainMaster?.categories || [];
-
 const allValues = categories.flatMap(c => c.values || []);
-
     const enableTableScroll =
         (pageSizeValue === 'all' && filteredLeads.length > 10) ||
         (pageSizeValue !== 'all' && Number(pageSizeValue) > 10);
-
     const handlePageSizeChange = (value) => {
         if (value === 'all') {
             const allLimit = Math.max(data.total || 0, 1);
@@ -477,12 +460,81 @@ const allValues = categories.flatMap(c => c.values || []);
         fetchDomainData(1, numeric);
     };
 
+    const visibleLeadIds = useMemo(() => filteredLeads.map((lead) => lead.id), [filteredLeads]);
+    const visibleLeadIdSet = useMemo(() => new Set(visibleLeadIds), [visibleLeadIds]);
+    const selectedLeadSet = useMemo(() => new Set(selectedLeadIds), [selectedLeadIds]);
+    const allVisibleSelected =
+        visibleLeadIds.length > 0 && visibleLeadIds.every((id) => selectedLeadSet.has(id));
+
+    useEffect(() => {
+        setSelectedLeadIds((prev) => {
+            const next = prev.filter((id) => visibleLeadIdSet.has(id));
+            if (next.length === prev.length && next.every((v, i) => v === prev[i])) {
+                return prev;
+            }
+            return next;
+        });
+    }, [visibleLeadIdSet]);
+
+    const toggleSelectLead = (id) => {
+        setSelectedLeadIds((prev) => (
+            prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+        ));
+    };
+
+    const toggleSelectAllVisible = () => {
+        if (allVisibleSelected) {
+            setSelectedLeadIds((prev) => prev.filter((id) => !selectedLeadSet.has(id)));
+            return;
+        }
+        setSelectedLeadIds((prev) => Array.from(new Set([...prev, ...visibleLeadIds])));
+    };
+
+    const bulkDeleteLeads = async () => {
+        if (selectedLeadIds.length === 0) return;
+        const confirmed = await confirmToast(
+            `Delete ${selectedLeadIds.length} lead(s)?`,
+            "Delete"
+        );
+        if (!confirmed) return;
+        const tid = toast.loading(`Deleting ${selectedLeadIds.length} lead(s)...`);
+        const results = await Promise.all(
+            selectedLeadIds.map((id) =>
+                deleteLeadById(id, { skipConfirm: true, suppressRefresh: true, suppressToast: true })
+            )
+        );
+        const failed = results.filter((ok) => !ok).length;
+        if (failed > 0) {
+            toast.error(`${failed} lead(s) failed to delete`, { id: tid });
+        } else {
+            toast.success("Selected leads deleted", { id: tid });
+        }
+        setSelectedLeadIds([]);
+        fetchDomainData(data.page, pageSize);
+    };
+
+    const exportLeadsCsv = async () => {
+        const confirmed = await confirmToast("Export current table to CSV?", "Export");
+        if (!confirmed) return;
+        const assignedHeader = isStaffTier ? "Assigned By" : "Assigned To";
+        const columns = [
+            { header: "Lead ID", accessor: (l) => l.id },
+            { header: "Lead Code", accessor: (l) => l.lead_code || "" },
+            { header: "Candidate", accessor: (l) => l.student_name || "" },
+            { header: "Email", accessor: (l) => l.email || "" },
+            { header: "Phone", accessor: (l) => l.phone || "" },
+            { header: "Category", accessor: (l) => l.category || "" },
+            { header: "Interest", accessor: (l) => l.interested_in || "" },
+            { header: assignedHeader, accessor: (l) => (isStaffTier ? l.assigned_by_name : l.assigned_to_name) || "" },
+            { header: "Date", accessor: (l) => (l.created_at ? new Date(l.created_at).toLocaleDateString("en-GB") : "") },
+            { header: "Status", accessor: (l) => l.status || "" },
+        ];
+        await exportToCsv("domain-leads.csv", columns, filteredLeads);
+    };
     if (loading && data.leads.length === 0) {
         return <LoadingScreen message={`Loading ${domain} leads...`} fullPage={false} />;
     }
-
    
-
     const viewTitleMap = {
         all: 'All Enquiries',
         'lead-status': 'All Leads Status',
@@ -490,9 +542,7 @@ const allValues = categories.flatMap(c => c.values || []);
         payment: 'All Payment Status',
         invalid: 'All Invalid Enquiries',
     };
-
     const activeViewTitle = viewTitleMap[viewMode] || viewTitleMap.all;
-
     return (
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -500,7 +550,6 @@ const allValues = categories.flatMap(c => c.values || []);
                     <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl leading-none">{domain}</h2>
                     <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">{activeViewTitle}</p>
                 </div>
-
                 <div className="flex flex-wrap items-center gap-2">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -517,7 +566,6 @@ const allValues = categories.flatMap(c => c.values || []);
                             </button>
                         )}
                     </div>
-
                     {/* CATEGORY FILTER */}
 <select
     value={categoryFilter}
@@ -534,7 +582,6 @@ const allValues = categories.flatMap(c => c.values || []);
         </option>
     ))}
 </select>
-
 {/* INTEREST FILTER */}
 <select
     value={interestFilter}
@@ -551,7 +598,6 @@ const allValues = categories.flatMap(c => c.values || []);
             </option>
         ))}
 </select>
-
                     <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                         <Filter size={14} className="text-slate-400" />
                         <select 
@@ -567,14 +613,12 @@ const allValues = categories.flatMap(c => c.values || []);
                             <option value="Closed">Closed</option>
                         </select>
                     </div>
-
                     <button
     onClick={resetFilters}
     className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs font-bold"
 >
     Reset
 </button>
-
                     <button 
                         onClick={() => fetchDomainData(data.page)} 
                         className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
@@ -583,7 +627,6 @@ const allValues = categories.flatMap(c => c.values || []);
                     </button>
                 </div>
             </div>
-
             <div className="flex items-center justify-between mb-2 px-1">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     <span>Show</span>
@@ -602,6 +645,23 @@ const allValues = categories.flatMap(c => c.values || []);
                 </div>
                 <div className="flex items-center gap-2">
                     <button
+                        type="button"
+                        onClick={bulkDeleteLeads}
+                        disabled={selectedLeadIds.length === 0}
+                        className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+                        title="Delete selected leads"
+                    >
+                        Delete Selected ({selectedLeadIds.length})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={exportLeadsCsv}
+                        className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
+                        title="Export CSV"
+                    >
+                        Export CSV
+                    </button>
+                    <button
                         onClick={() => fetchDomainData(data.page, pageSize)}
                         className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                         title="Refresh Table"
@@ -613,12 +673,19 @@ const allValues = categories.flatMap(c => c.values || []);
                     </div>
                 </div>
             </div>
-
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className={`overflow-x-auto ${enableTableScroll ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
                     <table className="w-full text-left text-sm border-collapse">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                <th className="p-4 border-r border-slate-100">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={toggleSelectAllVisible}
+                                        aria-label="Select all leads"
+                                    />
+                                </th>
                                 <th className="p-4 border-r border-slate-100">Candidate</th>
                                 <th className="p-4 border-r border-slate-100">Phone</th>
                                 <th className="p-4 border-r border-slate-100">Category</th>
@@ -641,19 +708,24 @@ const allValues = categories.flatMap(c => c.values || []);
                                     }`}
                                 >
                                     <td className="p-4 border-r border-slate-50">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedLeadSet.has(lead.id)}
+                                            onChange={() => toggleSelectLead(lead.id)}
+                                            aria-label={`Select lead ${lead.student_name}`}
+                                        />
+                                    </td>
+                                    <td className="p-4 border-r border-slate-50">
                                         <p className="font-bold text-slate-800">{lead.student_name}</p>
                                         <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`}</p>
                                     </td>
                                     <td className="p-4 font-medium text-slate-600 border-r border-slate-50 text-xs">{lead.phone}</td>
-
                                     <td className="p-4 text-xs font-bold text-slate-60 border-slate-50 border-r">
     {lead.category || '-'}
 </td>
-
 <td className="p-4 text-xs text-blue-600 font-bold border-slate-50 border-r">
     {lead.interested_in || '-'}
 </td>
-
                                     <td className="p-4 border-r border-slate-50">
                                         {isStaffTier ? (
                                             <div className="flex items-center gap-2">
@@ -676,11 +748,9 @@ const allValues = categories.flatMap(c => c.values || []);
                                             </select>
                                         )}
                                     </td>
-
                                     <td className="p-4 text-slate-500 text-[11px] font-bold border-r border-slate-50">
                                         {new Date(lead.created_at).toLocaleDateString('en-GB')}
                                     </td>
-
                                     <td className="p-4 border-r border-slate-50">
                                         <select 
                                             value={lead.status}
@@ -694,7 +764,6 @@ const allValues = categories.flatMap(c => c.values || []);
                                             <option value="Closed">Closed</option>
                                         </select>
                                     </td>
-
                                     <td className="p-4">
                                         <div className="flex items-center justify-center gap-2">
                                             <button
@@ -732,7 +801,6 @@ const allValues = categories.flatMap(c => c.values || []);
                         </tbody>
                     </table>
                 </div>
-
                 <Pagination 
                     stats={{ 
                         currentPage: data.page, 
@@ -745,7 +813,6 @@ const allValues = categories.flatMap(c => c.values || []);
                     pageSizeOptions={[10, 20, 50, 100, 'all']}
                 />
             </div>
-
             {/* MODALS MOVED OUTSIDE THE TABLE LOOP FOR CORRECT RENDERING */}
             {isEditModalOpen && selectedLead && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
@@ -831,7 +898,6 @@ const allValues = categories.flatMap(c => c.values || []);
                                 />
                             </div>
                         </div>
-
                         <div className="p-6 bg-slate-50 border-t flex gap-3">
                             <button 
                                 onClick={saveLeadEdit}
@@ -849,7 +915,6 @@ const allValues = categories.flatMap(c => c.values || []);
                     </div>
                 </div>
             )}
-
             {showHistoryModal && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[999] p-4 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
@@ -887,7 +952,6 @@ const allValues = categories.flatMap(c => c.values || []);
         </div>
     );
 };
-
 const getStatusStyle = (status) => {
     switch (status) {
         case 'New': return 'bg-blue-100 text-blue-700';
@@ -898,5 +962,4 @@ const getStatusStyle = (status) => {
         default: return 'bg-slate-100 text-slate-700';
     }
 };
-
 export default DomainPage;

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Save, ShieldCheck, UserCog, Lock } from 'lucide-react';
 import { API_BASE_URL } from '../../apiConfig';
+import { confirmToast } from '../../utils/toastConfirm';
 
 export default function AdminSettings() {
     const [formData, setFormData] = useState({ newUsername: '', newPassword: '' });
@@ -9,7 +10,7 @@ export default function AdminSettings() {
     const handleUpdate = async (e) => {
         e.preventDefault();
         
-        const confirmChange = window.confirm("This will change your login credentials immediately. Continue?");
+        const confirmChange = await confirmToast("This will change your login credentials immediately. Continue?", "Continue");
         if (!confirmChange) return;
 
         setLoading(true);

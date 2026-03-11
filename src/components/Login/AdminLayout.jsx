@@ -8,21 +8,6 @@ import { API_BASE_URL } from '../../apiConfig';
 export function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [pendingCount, setPendingCount] = useState(0);
-
-  // Fetch the count of pending leads for the sidebar badge
-  useEffect(() => {
-    const fetchCount = () => {
-      fetch(`${API_BASE_URL}/api/admin/leads`)
-        .then(res => res.json())
-        .then(data => setPendingCount(data.length))
-        .catch(err => console.error("Error fetching badge count:", err));
-    };
-
-    fetchCount();
-    const interval = setInterval(fetchCount, 30000); // Refresh count every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -31,8 +16,6 @@ export function AdminLayout() {
 
   const menuItems = [
     { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/admin/leads', label: 'Enquiry', icon: Users, showBadge: true },
-    { path: '/admin/approved-leads', label: 'Leads', icon: CheckCircle2 },
      { path: '/admin/careers', label: 'Careers', icon: FaCalendar },
           { path: '/admin/applicants', label: 'Job Applicants', icon: FaCalendar },
     { path: '/admin/media', label: 'Media Manager', icon: FaImage },
@@ -45,7 +28,7 @@ export function AdminLayout() {
       <aside className="w-64 bg-slate-900 text-white flex flex-col">
         <div className="p-8 border-b border-slate-800 flex items-center gap-3">
           <div className="w-8 h-8 bg-red-600 rounded flex items-center justify-center font-black">B</div>
-          <span className="font-bold tracking-wider italic text-xl">BLUESTONE</span>
+          <span className="font-bold tracking-wider italic text-xl">BLUESTONE<br/><span className='text-slate-400 text-[10px] font-black uppercase tracking-widest'>Admin Panel</span></span>
         </div>
 
         <nav className="flex-grow p-4 space-y-1">
@@ -63,15 +46,6 @@ export function AdminLayout() {
                 <item.icon size={20} />
                 <span className="font-semibold">{item.label}</span>
               </div>
-              
-              {/* Notification Badge for Leads */}
-              {item.showBadge && pendingCount > 0 && (
-                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
-                  location.pathname === item.path ? 'bg-white text-red-600' : 'bg-red-600 text-white'
-                }`}>
-                  {pendingCount}
-                </span>
-              )}
             </Link>
           ))}
         </nav>

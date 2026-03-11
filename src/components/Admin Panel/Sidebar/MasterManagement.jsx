@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { Plus, Trash2, Database, CheckCircle, Edit3, X, Save } from 'lucide-react';
 import * as Fa6Icons from 'react-icons/fa6';
@@ -42,12 +42,21 @@ const getReactIconComponentByKey = (iconKey) => {
 };
 
 const MasterManagement = () => {
-  const AUTO_REFRESH_MS = 30000;
+  const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
   const [data, setData] = useState([]);
   const [activeTab, setActiveTab] = useState('domain_setup');
   const [hierarchy, setHierarchy] = useState([]);
   const [newHierarchy, setNewHierarchy] = useState({ tier: 'ADMIN', role_name: '' });
   const [editingHierarchy, setEditingHierarchy] = useState(null);
+  const [hierarchyPage, setHierarchyPage] = useState(1);
+  const [hierarchyItemsPerPage, setHierarchyItemsPerPage] = useState(10);
+  
+  const actualItemsPerPage = hierarchyItemsPerPage === 'all' ? Math.max(1, hierarchy.length) : hierarchyItemsPerPage;
+  const totalHierarchyPages = Math.ceil(hierarchy.length / actualItemsPerPage);
+  const currentHierarchyData = hierarchy.slice(
+    (hierarchyPage - 1) * actualItemsPerPage,
+    hierarchyPage * actualItemsPerPage
+  );
   
   // Create States
   const [newDomain, setNewDomain] = useState('');
@@ -57,6 +66,10 @@ const MasterManagement = () => {
   const [newDomainLogo, setNewDomainLogo] = useState('');
   const [newCat, setNewCat] = useState({ domainId: '', name: '' });
   const [selection, setSelection] = useState({ catId: '', value: '' });
+  const fileInputRef = useRef(null);
+  
+  // Custom dropdown states for sub-values
+  const [openSubValuesCatId, setOpenSubValuesCatId] = useState(null);
 
   // Edit States
   const [editingItem, setEditingItem] = useState(EMPTY_EDITING_ITEM);
@@ -122,6 +135,8 @@ const MasterManagement = () => {
 
   const addHierarchyRole = async () => {
     if (!newHierarchy.role_name.trim()) return;
+    const ok = await confirmToast(`Add new role "${newHierarchy.role_name}" to ${newHierarchy.tier}?`, "Add Role");
+    if (!ok) return;
     const tid = toast.loading("Adding role...");
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/user-hierarchy`, {
@@ -143,6 +158,8 @@ const MasterManagement = () => {
 
   const saveHierarchyRole = async () => {
     if (!editingHierarchy?.role_name?.trim()) return;
+    const ok = await confirmToast("Save changes to this role?", "Save Changes");
+    if (!ok) return;
     const tid = toast.loading("Saving role...");
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/user-hierarchy/${editingHierarchy.id}`, {
@@ -159,6 +176,29 @@ const MasterManagement = () => {
       fetchHierarchy();
     } catch {
       toast.error("Failed to update role", { id: tid });
+    }
+  };
+
+  const toggleHierarchyStatus = async (row) => {
+    const action = Number(row.is_active) === 1 ? 'Deactivate' : 'Activate';
+    const ok = await confirmToast(`${action} role "${row.role_name}"?`, action);
+    if (!ok) return;
+    const tid = toast.loading("Updating status...");
+    try {
+      const updatedRow = { ...row, is_active: row.is_active ? 0 : 1 };
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/user-hierarchy/${row.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(updatedRow),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Status updated", { id: tid });
+      fetchHierarchy();
+    } catch {
+      toast.error("Failed to update status", { id: tid });
     }
   };
 
@@ -276,6 +316,63 @@ const MasterManagement = () => {
     } catch {
       toast.error("Failed to add value", { id: tid });
     }
+  };
+
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!selection.catId) {
+      toast.error("Please select a Category first.");
+      e.target.value = ''; // Reset input
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      if (!text) return;
+
+      // Basic CSV parsing: split by newlines and commas, ignore empty
+      const rawValues = text.split(/[\r\n,]+/).map(v => v.trim()).filter(v => v);
+      
+      if (rawValues.length === 0) {
+        toast.error("No valid values found in CSV");
+        return;
+      }
+
+      const tid = toast.loading(`Uploading ${rawValues.length} values...`);
+      try {
+        const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/values/bulk`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${localStorage.getItem('token')}` 
+            },
+            body: JSON.stringify({ category_id: selection.catId, values: rawValues })
+        });
+        
+        const contentType = res.headers.get("content-type");
+        if (!res.ok) {
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                const data = await res.json();
+                throw new Error(data.error || data.msg || 'Upload failed');
+            } else {
+                throw new Error(`Upload failed with status: ${res.status}`);
+            }
+        }
+        
+        const data = await res.json();
+        toast.success(data.msg || "Values uploaded", { id: tid });
+        fetchAll();
+      } catch (err) {
+        console.error(err);
+        toast.error(err.message || "Failed to bulk upload", { id: tid });
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   // --- EDIT ACTIONS ---
@@ -503,7 +600,25 @@ const MasterManagement = () => {
         </div>
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <label className="text-[10px] font-black uppercase text-blue-600 mb-2 block">Step 3: Sub-Value</label>
+          <label className="text-[10px] font-black uppercase text-blue-600 mb-2 flex items-center justify-between">
+            <span>Step 3: Sub-Value</span>
+            <div className="flex items-center gap-1">
+               <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2 py-1 rounded text-[9px] font-bold uppercase transition-colors flex items-center gap-1 border border-emerald-200"
+                  title="Upload CSV of values"
+               >
+                 <Database size={10} /> Import CSV
+               </button>
+               <input 
+                  type="file" 
+                  accept=".csv,.txt"
+                  className="hidden" 
+                  ref={fileInputRef} 
+                  onChange={handleBulkUpload} 
+               />
+            </div>
+          </label>
           <div className="space-y-2">
             <select className="w-full p-2 border rounded-lg bg-slate-50 text-sm" onChange={e=>setSelection({...selection, catId: e.target.value})}>
               <option>Select Category</option>
@@ -512,7 +627,7 @@ const MasterManagement = () => {
               ))}
             </select>
             <div className="flex gap-2">
-              <input className="flex-1 p-2 border rounded-lg text-sm" placeholder="e.g. IELTS" value={selection.value} onChange={e=>setSelection({...selection, value: e.target.value})}/>
+              <input className="flex-1 p-2 border rounded-lg text-sm" placeholder="e.g. IELTS" value={selection.value} onKeyDown={e => e.key === 'Enter' && addValue()} onChange={e=>setSelection({...selection, value: e.target.value})}/>
               <button onClick={addValue} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors"><CheckCircle size={18}/></button>
             </div>
           </div>
@@ -662,34 +777,54 @@ const MasterManagement = () => {
                     )}
                   </div>
                   
-                  {/* SUB-VALUES (Pills) */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {cat.values?.map(val => (
-                      <div key={val.id} className="group relative">
-                        {editingItem.type === 'values' && editingItem.id === val.id ? (
-                          <input 
-                            autoFocus 
-                            className="text-[10px] w-20 p-0.5 border rounded bg-white" 
-                            value={editingItem.value} 
-                            onBlur={saveEdit}
-                            onKeyDown={e => e.key === 'Enter' && saveEdit()}
-                            onChange={e=>setEditingItem({...editingItem, value: e.target.value})}
-                          />
-                        ) : (
-                          <span className="text-[10px] bg-white text-slate-600 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-2 hover:border-blue-300 transition-all">
-                            {val.sub_value}
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => startEdit('values', val.id, val.sub_value)} className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity">
-                                <Edit3 size={10} />
-                              </button>
-                              <button onClick={() => handleDelete('values', val.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-opacity font-bold">
-                                ×
-                              </button>
-                            </div>
-                          </span>
+                  {/* SUB-VALUES (Dropdown Toggle) */}
+                  <div className="mt-2">
+                    {cat.values && cat.values.length > 0 ? (
+                      <div className="relative">
+                        <button 
+                          onClick={() => setOpenSubValuesCatId(openSubValuesCatId === cat.id ? null : cat.id)}
+                          className="text-[10px] font-bold uppercase flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100 hover:bg-blue-100 transition-colors"
+                        >
+                          {cat.values.length} Sub-Values {openSubValuesCatId === cat.id ? '▲' : '▼'}
+                        </button>
+                        
+                        {/* Dropdown Content */}
+                        {openSubValuesCatId === cat.id && (
+                          <div className="absolute z-10 top-full left-0 mt-1 w-64 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded shadow-lg p-2 flex flex-col gap-1">
+                            {cat.values.map(val => (
+                              <div key={val.id} className="group relative flex justify-between items-center px-2 py-1 hover:bg-slate-50 rounded">
+                                {editingItem.type === 'values' && editingItem.id === val.id ? (
+                                  <input 
+                                    autoFocus 
+                                    className="text-[10px] w-full p-0.5 border rounded bg-white" 
+                                    value={editingItem.value} 
+                                    onBlur={saveEdit}
+                                    onKeyDown={e => e.key === 'Enter' && saveEdit()}
+                                    onChange={e=>setEditingItem({...editingItem, value: e.target.value})}
+                                  />
+                                ) : (
+                                  <>
+                                    <span className="text-[10px] text-slate-700 font-medium truncate pr-2">
+                                      {val.sub_value}
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-50 pl-2">
+                                      <button onClick={() => startEdit('values', val.id, val.sub_value)} className="text-blue-400 hover:text-blue-600">
+                                        <Edit3 size={10} />
+                                      </button>
+                                      <button onClick={() => handleDelete('values', val.id)} className="text-slate-400 hover:text-red-500 font-bold">
+                                        ×
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                    ))}
+                    ) : (
+                      <span className="text-[9px] text-slate-400 italic">No sub-values</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -706,14 +841,7 @@ const MasterManagement = () => {
         </div>
       )}
 
-      {activeTab === 'content_images' && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6">
-          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Content & Images</h2>
-          <p className="text-sm text-slate-500 mt-2">
-            Dynamic content and image controls can be maintained here. Media manager tab integration can be added next.
-          </p>
-        </div>
-      )}
+
 
       {activeTab === 'user_hierarchy' && (
         <div className="space-y-6">
@@ -749,9 +877,9 @@ const MasterManagement = () => {
             <div className="p-4 bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wide">
               Maintained Roles
             </div>
-            <div className="p-4 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-[10px] uppercase text-slate-500">
+            <div className="p-4 overflow-x-auto overflow-y-auto max-h-[500px] border-b border-slate-200">
+              <table className="w-full text-sm relative">
+                <thead className="text-[10px] uppercase text-slate-500 sticky top-0 bg-white z-10 shadow-sm">
                   <tr>
                     <th className="p-2 text-left">Tier</th>
                     <th className="p-2 text-left">Role</th>
@@ -760,7 +888,7 @@ const MasterManagement = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {hierarchy.map((row) => {
+                  {currentHierarchyData.map((row) => {
                     const isEditing = editingHierarchy?.id === row.id;
                     return (
                       <tr key={row.id}>
@@ -797,9 +925,22 @@ const MasterManagement = () => {
                               <option value={0}>Inactive</option>
                             </select>
                           ) : (
-                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${Number(row.is_active) === 1 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
-                              {Number(row.is_active) === 1 ? 'Active' : 'Inactive'}
-                            </span>
+                            <button
+                              onClick={() => toggleHierarchyStatus(row)}
+                              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 ease-in-out ${
+                                Number(row.is_active) === 1 ? 'bg-emerald-500' : 'bg-slate-300'
+                              }`}
+                              role="switch"
+                              aria-checked={Number(row.is_active) === 1}
+                              title={Number(row.is_active) === 1 ? "Click to Deactivate" : "Click to Activate"}
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  Number(row.is_active) === 1 ? 'translate-x-2' : '-translate-x-2'
+                                }`}
+                              />
+                            </button>
                           )}
                         </td>
                         <td className="p-2 text-center">
@@ -823,6 +964,52 @@ const MasterManagement = () => {
                 </tbody>
               </table>
             </div>
+            
+            {/* Pagination Controls */}
+            {hierarchy.length > 0 && (
+              <div className="flex items-center justify-between p-4 bg-slate-50 border-t border-slate-200 text-xs shadow-inner">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                    <span>Show</span>
+                    <select 
+                      className="border border-slate-300 rounded p-1 bg-white text-slate-700 outline-none hover:border-blue-400 focus:border-blue-500"
+                      value={hierarchyItemsPerPage}
+                      onChange={(e) => {
+                        setHierarchyItemsPerPage(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                        setHierarchyPage(1);
+                      }}
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value="all">All</option>
+                    </select>
+                    <span>entries</span>
+                  </div>
+                  <span className="text-slate-400">|</span>
+                  <span className="text-slate-500 font-medium tracking-wide">
+                    Showing {((hierarchyPage - 1) * actualItemsPerPage) + 1} to {Math.min(hierarchyPage * actualItemsPerPage, hierarchy.length)} of {hierarchy.length} Roles
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    disabled={hierarchyPage === 1} 
+                    onClick={() => setHierarchyPage(p => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 border border-slate-300 rounded-md bg-white text-slate-700 disabled:bg-slate-100 disabled:text-slate-400 font-medium hover:bg-slate-50 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    disabled={hierarchyPage === totalHierarchyPages} 
+                    onClick={() => setHierarchyPage(p => Math.min(totalHierarchyPages, p + 1))}
+                    className="px-3 py-1.5 border border-blue-600 rounded-md bg-blue-600 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-300 font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

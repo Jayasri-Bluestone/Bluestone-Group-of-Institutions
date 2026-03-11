@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Mail, Phone, ChevronLeft, ChevronRight, UserMinus, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 import { API_BASE_URL } from '../../apiConfig';
+import { confirmToast } from '../../utils/toastConfirm';
+import { exportToCsv } from '../../utils/exportCsv';
 
 
 export function AdminLeads() {
   const [leads, setLeads] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const itemsPerPage = 10;
 
   useEffect(() => { fetchLeads(); }, []);
@@ -94,27 +97,150 @@ export function AdminLeads() {
   };
 
   const handleRemove = async (id) => {
-    const loadingToast = toast.loading("Removing...");
+    return removeLeadById(id);
+  };
+
+  const removeLeadById = async (id, options = {}) => {
+    const { suppressStateUpdate = false, suppressToast = false } = options;
+    const loadingToast = suppressToast ? null : toast.loading("Removing...");
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/approved-leads/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setLeads(leads.filter(l => l.id !== id));
-        toast.success("Enquiry removed", { id: loadingToast });
+        if (!suppressStateUpdate) {
+          setLeads((prev) => prev.filter((l) => l.id !== id));
+        }
+        if (!suppressToast) toast.success("Enquiry removed", { id: loadingToast });
+        return true;
       }
-    } catch (err) { toast.error("Delete failed", { id: loadingToast }); }
+      if (!suppressToast) toast.error("Delete failed", { id: loadingToast });
+      return false;
+    } catch (err) {
+      if (!suppressToast) toast.error("Delete failed", { id: loadingToast });
+      return false;
+    }
   };
 
   const currentLeads = leads.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const visibleLeadIds = useMemo(() => currentLeads.map((lead) => lead.id), [currentLeads]);
+  const selectedLeadSet = useMemo(() => new Set(selectedLeadIds), [selectedLeadIds]);
+  const allVisibleSelected =
+    visibleLeadIds.length > 0 && visibleLeadIds.every((id) => selectedLeadSet.has(id));
+
+  useEffect(() => {
+    setSelectedLeadIds((prev) => prev.filter((id) => visibleLeadIds.includes(id)));
+  }, [visibleLeadIds]);
+
+  const toggleSelectLead = (id) => {
+    setSelectedLeadIds((prev) => (
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    ));
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedLeadIds((prev) => prev.filter((id) => !selectedLeadSet.has(id)));
+      return;
+    }
+    setSelectedLeadIds((prev) => Array.from(new Set([...prev, ...visibleLeadIds])));
+  };
+
+  const bulkRemoveLeads = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const confirmed = await confirmToast(
+      `Delete ${selectedLeadIds.length} enquiry(s)?`,
+      "Delete"
+    );
+    if (!confirmed) return;
+    const tid = toast.loading(`Deleting ${selectedLeadIds.length} enquiry(s)...`);
+    const results = await Promise.all(
+      selectedLeadIds.map((id) => removeLeadById(id, { suppressStateUpdate: true, suppressToast: true }))
+    );
+    const failed = results.filter((ok) => !ok).length;
+    const successIds = selectedLeadIds.filter((id, index) => results[index]);
+    if (successIds.length > 0) {
+      setLeads((prev) => prev.filter((l) => !successIds.includes(l.id)));
+    }
+    if (failed > 0) {
+      toast.error(`${failed} enquiry(s) failed to delete`, { id: tid });
+    } else {
+      toast.success("Selected enquiries deleted", { id: tid });
+    }
+    setSelectedLeadIds([]);
+  };
+
+  const exportLeadsCsv = async () => {
+    const confirmed = await confirmToast("Export current table to CSV?", "Export");
+    if (!confirmed) return;
+    const columns = [
+      { header: "Date", accessor: (l) => formatDateTime(l.created_at).date },
+      { header: "Time", accessor: (l) => formatDateTime(l.created_at).time },
+      { header: "Name", accessor: (l) => l.name || "" },
+      { header: "Email", accessor: (l) => l.email || "" },
+      { header: "Phone", accessor: (l) => l.phone || "" },
+      { header: "Business Focus", accessor: (l) => l.business_focus || "" },
+    ];
+    await exportToCsv("pending-enquiries.csv", columns, currentLeads);
+  };
 
   return (
     <div className="space-y-6">
-      <Toaster position="top-right" />
+      <Toaster 
+        position="top-center" 
+        toastOptions={{ 
+          duration: 2000,
+          success: {
+            style: {
+              background: '#16a34a', /* green-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#16a34a',
+            },
+          },
+          error: {
+            style: {
+              background: '#dc2626', /* red-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#dc2626',
+            },
+          },
+        }} 
+      />
 
       <h1 className="text-2xl font-black text-slate-900">Pending Enquiry</h1>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={bulkRemoveLeads}
+          disabled={selectedLeadIds.length === 0}
+          className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+        >
+          Delete Selected ({selectedLeadIds.length})
+        </button>
+        <button
+          type="button"
+          onClick={exportLeadsCsv}
+          className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
+        >
+          Export CSV
+        </button>
+      </div>
       <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b">
             <tr>
+              <th className="p-4 text-[11px] font-black uppercase text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleSelectAllVisible}
+                  aria-label="Select all leads"
+                />
+              </th>
               <th className="p-4 text-[11px] font-black uppercase text-slate-500">Date & Time</th>
               <th className="p-4 text-[11px] font-black uppercase text-slate-500">Name</th>
               <th className="p-4 text-[11px] font-black uppercase text-slate-500">Contact Info</th>
@@ -128,6 +254,14 @@ export function AdminLeads() {
                 const { date, time } = formatDateTime(lead.created_at);
                 return (
                   <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedLeadSet.has(lead.id)}
+                        onChange={() => toggleSelectLead(lead.id)}
+                        aria-label={`Select lead ${lead.name}`}
+                      />
+                    </td>
                     <td className="p-4">
                       <div className="text-[11px] font-bold text-slate-900 uppercase">{date}</div>
                       <div className="text-[10px] text-slate-400 flex items-center gap-1">
@@ -163,7 +297,7 @@ export function AdminLeads() {
               })
             ) : (
               <tr>
-                <td colSpan="5" className="p-10 text-center text-slate-400 italic">No pending leads found.</td>
+                <td colSpan="6" className="p-10 text-center text-slate-400 italic">No pending leads found.</td>
               </tr>
             )}
           </tbody>

@@ -35,7 +35,7 @@ const Dashboard = ({ user }) => {
     
     const [statusPage, setStatusPage] = useState(1);
     const [statusLimit, setStatusLimit] = useState(5);
-    const AUTO_REFRESH_MS = 30000;
+    const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
 
     const getTier = (u) => {
         if (u?.tier) return u.tier;
@@ -44,6 +44,14 @@ const Dashboard = ({ user }) => {
         return 'STAFF';
     };
     const isSuperAdmin = getTier(user) === 'SUPER_ADMIN';
+    const isAdminTier = getTier(user) === 'ADMIN' || isSuperAdmin;
+
+    const getUserDomains = (domainStr) => {
+        if (!domainStr) return [];
+        return domainStr.split(',').map(d => d.trim()).filter(Boolean);
+    };
+    const userDomainsList = getUserDomains(user?.domain);
+    const hasMultipleDomains = userDomainsList.length > 1;
 
     const getSlug = (name = '') => {
         const cleanName = String(name || '').trim();
@@ -87,7 +95,7 @@ const Dashboard = ({ user }) => {
             ? `?domain=${encodeURIComponent(appliedGlobalFilter)}`
             : '';
 
-        if (isSuperAdmin) {
+        if (isSuperAdmin || (isAdminTier && hasMultipleDomains)) {
             if (cardType === 'totalEnquiry') navigate(`/portal/bgi/all-enquiry${domainQuery}`);
             if (cardType === 'totalFollowup') navigate(`/portal/bgi/lead-status${domainQuery}`);
             if (cardType === 'totalAdmission') navigate(`/portal/bgi/lead-status${domainQuery ? `${domainQuery}&status=${encodeURIComponent('Enrolled')}` : `?status=${encodeURIComponent('Enrolled')}`}`);
@@ -98,8 +106,8 @@ const Dashboard = ({ user }) => {
             return;
         }
 
-        // Non-super-admin: open their domain table
-        const slug = getSlug(user.domain);
+        // Non-super-admin (and not multi-domain admin): open their specific domain table
+        const slug = getSlug(userDomainsList[0] || user.domain);
         if (cardType === 'totalFollowup') navigate(`/portal/domain/${slug}?view=lead-status`);
         else if (cardType === 'totalAdmission') navigate(`/portal/domain/${slug}?view=lead-status&status=${encodeURIComponent('Enrolled')}`);
         else if (cardType === 'totalPending') navigate(`/portal/domain/${slug}?view=waiting`);
@@ -128,22 +136,30 @@ const Dashboard = ({ user }) => {
 
     // ... fetchMetric and Domain useEffect remain the same as your previous version ...
     useEffect(() => {
-        if (isSuperAdmin) {
-            fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-            })
-            .then(res => res.json())
-            .then((json) => {
+        const fetchDomains = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`, {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                const json = await res.json();
                 const domainNames = Array.isArray(json)
                     ? json
                         .map((d) => (typeof d === 'string' ? d : d?.name))
                         .filter(Boolean)
                     : [];
-                setDomains(domainNames);
-            })
-            .catch(console.error);
-        }
-    }, [isSuperAdmin]);
+                
+                if (isSuperAdmin) {
+                    setDomains(domainNames);
+                } else if (isAdminTier && hasMultipleDomains) {
+                    const filtered = domainNames.filter(d => userDomainsList.includes(d));
+                    setDomains(filtered);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        };
+        fetchDomains();
+    }, [isSuperAdmin, isAdminTier, hasMultipleDomains, user.domain]);
 
     const fetchMetric = useCallback(async (timeframe, type, domain) => {
         try {
@@ -298,7 +314,7 @@ const Dashboard = ({ user }) => {
                     <h1 className="text-2xl font-black text-slate-800 tracking-tight">Welcome, {user.name}</h1>
                     <p className="text-slate-500 font-medium text-xs uppercase tracking-widest">{user.role} • {user.domain}</p>
                 </div>
-                {isSuperAdmin && (
+                {(isSuperAdmin || (isAdminTier && hasMultipleDomains)) && (
                     <div className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl shadow-sm">
                         <Filter size={14} className="text-slate-400" />
                         <select
@@ -310,7 +326,8 @@ const Dashboard = ({ user }) => {
                             }}
                             className="bg-transparent font-bold text-xs outline-none"
                         >
-                            <option value="All">All Domains</option>
+                            {isSuperAdmin && <option value="All">All Domains</option>}
+                            {!isSuperAdmin && domains.length > 1 && <option value="All">All Assigned Domains</option>}
                             {domains.map((d) => <option key={d} value={d}>{d}</option>)}
                         </select>
                     </div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, LayoutGrid, List, Search, ArrowUpDown, DollarSign, Briefcase, MapPin } from 'lucide-react';
+import { confirmToast } from '../../utils/toastConfirm';
 
 export function AdminCareers({ jobs = [], onAddJob, onDeleteJob }) {
   // 1. Expanded Form State
@@ -135,7 +136,11 @@ export function AdminCareers({ jobs = [], onAddJob, onDeleteJob }) {
                   <span className="px-3 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-full uppercase tracking-wider">
                     {job.category}
                   </span>
-                  <button onClick={() => onDeleteJob(job.id)} className="p-2 text-gray-300 hover:text-red-600 transition">
+                  <button onClick={async () => {
+                    const confirmed = await confirmToast("Delete this job opening?");
+                    if (confirmed && onDeleteJob) onDeleteJob(job.id);
+                    else if (confirmed && !onDeleteJob) alert("Delete action is not properly linked.");
+                  }} className="p-2 text-gray-300 hover:text-red-600 transition">
                     <Trash2 size={18} />
                   </button>
                 </div>

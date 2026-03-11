@@ -11,51 +11,30 @@ export function AdminDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ 
-    totalLeads: 0, 
-    todayLeads: 0, 
     totalApplicants: 0, 
-    activeJobs: 0,
-    byFocus: {} 
+    activeJobs: 0
   });
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        // Matching your Express routes: /leads, /applications, and /jobs
-        const [leadsRes, appsRes, jobsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/admin/leads`),
+        // Matching your Express routes: /applications, and /jobs
+        const [appsRes, jobsRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/admin/applications`),
           fetch(`${API_BASE_URL}/api/jobs`)
         ]);
 
-        const leads = await leadsRes.json();
         const applications = await appsRes.json();
         const jobs = await jobsRes.json();
 
         // Check if data is array (Express mysql2 returns arrays)
-        const leadsList = Array.isArray(leads) ? leads : [];
         const appsList = Array.isArray(applications) ? applications : [];
         const jobsList = Array.isArray(jobs) ? jobs : [];
 
-        const todayStr = new Date().toISOString().split('T')[0];
-
-        const statsObj = leadsList.reduce((acc, lead) => {
-          // MySQL uses created_at usually
-          if (lead.created_at && lead.created_at.startsWith(todayStr)) {
-            acc.today += 1;
-          }
-          const focus = lead.business_focus || 'General';
-          acc.byFocus[focus] = (acc.byFocus[focus] || 0) + 1;
-          return acc;
-        }, { today: 0, byFocus: {} });
-
         setStats({
-          totalLeads: leadsList.length,
-          todayLeads: statsObj.today,
           totalApplicants: appsList.length,
-          activeJobs: jobsList.length,
-          byFocus: statsObj.byFocus
+          activeJobs: jobsList.length
         });
       } catch (err) {
         console.error("Dashboard Sync Error:", err);
@@ -82,14 +61,7 @@ export function AdminDashboard() {
       </header>
 
       {/* Primary Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard 
-          title="Business Leads" 
-          value={stats.totalLeads} 
-          icon={<Users />} 
-          color="bg-blue-600" 
-          onClick={() => navigate('/admin/leads')}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <StatCard 
           title="Job Applicants" 
           value={stats.totalApplicants} 
@@ -104,28 +76,6 @@ export function AdminDashboard() {
           color="bg-purple-600" 
           onClick={() => navigate('/admin/jobs')}
         />
-        <StatCard 
-          title="Inbound Today" 
-          value={stats.todayLeads} 
-          icon={<TrendingUp />} 
-          color="bg-emerald-600" 
-          onClick={() => navigate('/admin/leads')}
-        />
-      </div>
-
-      {/* Breakdown List */}
-      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-        <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
-          <Clock className="text-blue-600" size={20} /> Branch Distribution
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Object.entries(stats.byFocus).map(([name, count]) => (
-            <div key={name} className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 truncate">{name}</p>
-              <p className="text-2xl font-black text-slate-900">{count}</p>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

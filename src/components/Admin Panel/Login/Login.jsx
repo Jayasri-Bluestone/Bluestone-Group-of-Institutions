@@ -1,43 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
-import { Mail, Lock, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Mail, Lock, ShieldCheck, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
+import { RiAdminFill, RiAdminLine } from 'react-icons/ri';
 
 const LoginPage = ({ onLoginSuccess }) => {
   const [captchaText, setCaptchaText] = useState("");
   const [userInput, setUserInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
-  const canvasRef = useRef(null);
-
+  const [showPassword, setShowPassword] = useState(false);
   const generateCaptcha = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let result = "";
-    for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-    setCaptchaText(result);
-    drawCaptcha(result);
-    setUserInput('');
-  };
-
-  const drawCaptcha = (text) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#f1f5f9";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.font = "bold 26px 'Courier New'";
-    ctx.fillStyle = "#1e293b";
-    for (let i = 0; i < text.length; i++) {
-      ctx.fillText(text[i], 20 + (i * 25), 32 + (Math.random() * 10 - 5));
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
+    setCaptchaText(result);
+    setUserInput('');
   };
 
   useEffect(() => { generateCaptcha(); }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (userInput.toUpperCase() !== captchaText) {
+    if (userInput !== captchaText) {
       toast.error("Invalid Security Code.");
       return generateCaptcha();
     }
@@ -62,10 +49,13 @@ const LoginPage = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="bg-red-600 p-8 text-center">
-          <h1 className="text-2xl font-black text-white tracking-tighter uppercase italic">Bluestone CRM</h1>
+    <div className="min-h-screen bg-gradient-to-br from-red-200 via-red-100 to-red-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+       <div className="bg-red-600 p-8 text-center text-white">
+                 <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+                   <RiAdminFill size={32} />
+                 </div>
+          <h1 className="text-2xl font-black text-white tracking-tighter uppercase">Bluestone CRM</h1>
           <p className="text-white/70 text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Leads Management System</p>
         </div>
 
@@ -74,7 +64,7 @@ const LoginPage = ({ onLoginSuccess }) => {
             <Mail className="absolute left-3 top-3.5 text-slate-400" size={18} />
             <input 
               type="email" placeholder="Email" required 
-              className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-red-500 outline-none text-sm transition-all"
+              className="w-full pl-10 pr-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none text-sm transition-all"
               onChange={(e) => setFormData({...formData, email: e.target.value})}
             />
           </div>
@@ -82,30 +72,45 @@ const LoginPage = ({ onLoginSuccess }) => {
           <div className="relative">
             <Lock className="absolute left-3 top-3.5 text-slate-400" size={18} />
             <input 
-              type="password" placeholder="Password" required 
-              className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-red-500 outline-none text-sm transition-all"
+              type={showPassword ? "text" : "password"} placeholder="Password" required 
+              className="w-full pl-10 pr-10 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none text-sm transition-all"
               onChange={(e) => setFormData({...formData, password: e.target.value})}
             />
+            <button
+              type="button"
+              className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 transition-colors"
+              onClick={() => setShowPassword(!showPassword)}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
           </div>
 
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-             <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Verify Identity</span>
-                <button type="button" onClick={generateCaptcha} className="text-red-600 hover:rotate-90 transition-transform"><RefreshCw size={14} /></button>
-             </div>
-             <canvas ref={canvasRef} width="200" height="50" className="mx-auto rounded" />
-             <input 
-               type="text" placeholder="Type letters above" required value={userInput}
-               onChange={(e) => setUserInput(e.target.value)}
-               className="w-full px-4 py-2 border rounded-lg text-slate-400 text-center font-bold uppercase text-sm focus:border-red-500 outline-none"
-             />
+          {/* Captcha Section */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Security Check</label>
+            <div className="flex gap-3">
+              <div className="flex-1 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between px-4 py-2 opacity-80 select-none" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px)' }}>
+                <span className="font-mono text-xl font-bold tracking-[0.3em] text-slate-700 italic">{captchaText}</span>
+                <button type="button" onClick={generateCaptcha} className="text-slate-400 hover:text-red-600 transition-colors p-1">
+                  <RefreshCw size={18} />
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Enter Code"
+                required
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                className="w-1/2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-center font-bold tracking-wider"
+              />
+            </div>
           </div>
 
           <button 
             disabled={loading} 
-            className="w-full bg-slate-900 hover:bg-red-600 text-white font-bold py-4 rounded-xl text-sm uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:bg-slate-300"
+            className="w-full bg-red-600 hover:bg-red-600 text-white font-bold py-4 rounded-xl text-sm uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:bg-slate-300"
           >
-            {loading ? "Authenticating..." : "Secure Login"}
+            {loading ? "Authenticating..." : "Secure Login"} 
           </button>
         </form>
       </div>

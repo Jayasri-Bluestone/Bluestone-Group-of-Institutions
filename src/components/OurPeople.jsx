@@ -12,6 +12,7 @@ import "slick-carousel/slick/slick-theme.css";
 export function OurPeople() {
   const sliderRef = useRef(null);
   const [media, setMedia] = useState({});
+  const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,50 +42,22 @@ export function OurPeople() {
         setLoading(false);
       }
     };
-    fetchTeamMedia();
+
+    const fetchTeamMembers = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/our_people`);
+        const data = await response.json();
+        setTeam(data);
+      } catch (error) {
+        console.error("Error fetching our_people:", error);
+      }
+    };
+
+    Promise.all([fetchTeamMedia(), fetchTeamMembers()]).finally(() => setLoading(false));
   }, []);
 
   // Helper to fetch images. Matches the filenames provided in your DB snippet.
   const getImg = (key) => media[key] || "https://placehold.co/400x500?text=Member+Photo";
-
-  const team = [
-    {
-      name: "Mrs. Neena Priya",
-      position: "Bluestone Overseas Co-ordinator",
-      image: getImg("Neena.jpeg"), // Ensure DB alt_text matches this or update to "neena.png"
-      bio: "Expert in international relations and global mobility, streamlining cross-border transitions for students and professionals.",
-    },
-    {
-      name: "Mr. Tamil Selvan",
-      position: "Bluestone IAS Academy Co-ordinator",
-      image: getImg("Tamil.jpeg"),
-      bio: "Dedicated educator specializing in civil service curriculum design and competitive examination strategy.",
-    },
-    {
-      name: "Mr. Dharani Kumaresan",
-      position: "Corresponded of Bluestone International Preschool",
-      image: getImg("Dharani.jpeg"),
-      bio: "Specialist in early childhood development, implementing world-class Montessori and play-based learning frameworks.",
-    },
-    {
-      name: "Mr. Saravanan",
-      position: "Bluestone Placement Co-ordinator",
-      image: getImg("Saravanan.jpeg"),
-      bio: "Bridging the gap between talent and industry through strategic corporate partnerships and career coaching.",
-    },
-    {
-      name: "Mr. Mani",
-      position: "Bluestone Tech-Park Co-ordinator",
-      image: getImg("Mani.png"), // Updated to match your specific DB upload
-      bio: "Managing high-tech workspace infrastructure and fostering an ecosystem for startups and digital innovation.",
-    },
-    {
-      name: "Mr. Divit",
-      position: "Elite Sports Co-ordinator",
-      image: getImg("Divit.jpg"),
-      bio: "Driving athletic excellence through specialized training programs and professional sports management.",
-    },
-  ];
 
   const settings = {
     dots: true,
@@ -122,9 +95,9 @@ export function OurPeople() {
                     whileHover={{ y: -5 }}
                     className="bg-white rounded-2xl overflow-hidden shadow-xl h-full flex flex-col min-h-[550px]"
                   >
-                    <div className="h-80 overflow-hidden flex-shrink-0 bg-gray-200">
+                    <div className="w-full aspect-square overflow-hidden flex-shrink-0 bg-gray-100">
                       <img
-                        src={member.image}
+                        src={member.image_data ? member.image_data : getImg(member.image_key)}
                         alt={member.name}
                         className="w-full h-full object-cover"
                         onError={(e) => { e.target.src = "https://placehold.co/400x500?text=Image+Error"; }}

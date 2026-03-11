@@ -81,7 +81,32 @@ export function CareersPage({ jobs = [] }) {
 
   return (
     <div className="pt-32 pb-20 bg-gray-50 min-h-screen font-sans">
-      <Toaster position="top-center" />
+      <Toaster 
+        position="top-center" 
+        toastOptions={{ 
+          duration: 2000,
+          success: {
+            style: {
+              background: '#16a34a', /* green-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#16a34a',
+            },
+          },
+          error: {
+            style: {
+              background: '#dc2626', /* red-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#dc2626',
+            },
+          },
+        }} 
+      />
 
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-12">

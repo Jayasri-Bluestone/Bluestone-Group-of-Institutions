@@ -83,62 +83,87 @@ export function Contact() {
   }, [formData.domain, masterData]);
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (!validateForm()) {
-    toast.error("Please fix the errors in the form");
-    return;
-  }
-
-  const loadingToast = toast.loading("Sending your inquiry...");
-
-  try {
-    const payload = { ...formData };
-
-    const response = await fetch(`${API_BASE_URL_PORTAL}/api/contact`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      toast.success("Inquiry sent successfully!", { id: loadingToast });
-
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        message: '',
-        domain: '',
-        category: '',
-        interested_in: ''
-      });
-
-      setErrors({});
-    } else {
-      throw new Error(data.error || "Failed to submit");
+    if (!validateForm()) {
+      toast.error("Please fix the errors in the form");
+      return;
     }
 
-  } catch (error) {
-    toast.error(error.message || "Server connection failed", { id: loadingToast });
-  }
-};
+    const loadingToast = toast.loading("Sending your inquiry...");
+
+    try {
+      const payload = { ...formData };
+
+      const response = await fetch(`${API_BASE_URL_PORTAL}/api/contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Inquiry sent successfully!", { id: loadingToast });
+
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          message: '',
+          domain: '',
+          category: '',
+          interested_in: ''
+        });
+
+        setErrors({});
+      } else {
+        throw new Error(data.error || "Failed to submit");
+      }
+
+    } catch (error) {
+      toast.error(error.message || "Server connection failed", { id: loadingToast });
+    }
+  };
 
   return (
     <section id="contact" className="py-24 bg-white relative overflow-hidden">
-      <Toaster position="top-center" />
- <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                className="text-center mb-16"
-              >
-                <h2 className="text-5xl md:text-7xl font-extrabold text-red-600 mt-2">Contact <span className="text-black">Us</span></h2>
-              </motion.div>
+      <Toaster 
+        position="top-center" 
+        toastOptions={{ 
+          duration: 2000,
+          success: {
+            style: {
+              background: '#16a34a', /* green-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#16a34a',
+            },
+          },
+          error: {
+            style: {
+              background: '#dc2626', /* red-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#dc2626',
+            },
+          },
+        }} 
+      />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        className="text-center mb-16"
+      >
+        <h2 className="text-5xl md:text-7xl font-extrabold text-red-600 mt-2">Contact <span className="text-black">Us</span></h2>
+      </motion.div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="flex flex-col lg:flex-row gap-16">
-          
+
           {/* Left Side: Info */}
           <div className="lg:w-1/3 space-y-8">
             <div>
@@ -149,72 +174,72 @@ export function Contact() {
               <h2 className="text-4xl font-black text-slate-900 mb-6 leading-tight">
                 Connect with our <br /><span className="text-red-600">Strategic Team.</span>
               </h2>
-              
+
               <div className="space-y-4 mb-8 text-slate-400">
                 <a href="tel:+917418176606" className="flex items-center gap-4 group cursor-pointer w-fit">
                   <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
-                    <Phone size={18}/>
+                    <Phone size={18} />
                   </div>
                   <span className="text-sm font-bold text-slate-700 group-hover:text-red-600 transition-colors">+91 74181 76606</span>
                 </a>
 
                 <a href="mailto:info@bluestonegroupofinstitutions.com" className="flex items-center gap-4 group cursor-pointer w-fit">
                   <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
-                    <Mail size={18}/>
+                    <Mail size={18} />
                   </div>
                   <span className="text-sm font-bold text-slate-700 group-hover:text-red-600 transition-colors break-all">info@bluestonegroupofinstitutions.com</span>
                 </a>
               </div>
             </div>
 
-             {/* Map Placeholder */}
+            {/* Map Placeholder */}
 
             <div className="w-full h-80 rounded-3xl overflow-hidden border border-red-600 hover:grayscale-0 transition-all duration-500">
 
               <iframe
 
- src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3916.457781655861!2d76.975759!3d11.0042393!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ba8590cfca38287%3A0xc211732c4fb4db14!2sBluestone%20Group%20of%20Institutions!5e0!3m2!1sen!2sin!4v1771325952840!5m2!1sen!2sin" 
+                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3916.457781655861!2d76.975759!3d11.0042393!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ba8590cfca38287%3A0xc211732c4fb4db14!2sBluestone%20Group%20of%20Institutions!5e0!3m2!1sen!2sin!4v1771325952840!5m2!1sen!2sin"
                 width="100%" height="100%" style={{ border: 0 }} allowFullScreen="" loading="lazy"
 
               ></iframe>
 
             </div>
 
- 
+
           </div>
 
           {/* Right Side: Form */}
           <div className="lg:w-2/3">
             <motion.div className="bg-slate-50 rounded-[2.5rem] p-8 md:p-12 border border-slate-100 shadow-xl">
               <form onSubmit={handleSubmit} className="space-y-6">
-                
+
                 {/* Name & Phone Row */}
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Full Name *</label>
-                    <Input 
+                    <Input
                       className={`h-14 rounded-xl border-slate-200 focus:ring-2 ${errors.name ? 'border-red-500 bg-red-50/30' : ''}`}
-                      value={formData.name} 
+                      value={formData.name}
                       onChange={(e) => {
-                        setFormData({...formData, name: e.target.value});
-                        if (errors.name) setErrors(prev => ({...prev, name: null}));
-                      }} 
+                        setFormData({ ...formData, name: e.target.value });
+                        if (errors.name) setErrors(prev => ({ ...prev, name: null }));
+                      }}
                     />
-                    {errors.name && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.name}</p>}
+                    {errors.name && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12} /> {errors.name}</p>}
                   </div>
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Phone Number *</label>
-                    <Input 
+                    <Input
                       placeholder="+91"
                       className={`h-14 rounded-xl border-slate-200 ${errors.phone ? 'border-red-500 bg-red-50/30' : ''}`}
-                      value={formData.phone} 
+                      value={formData.phone}
                       onChange={(e) => {
-                        setFormData({...formData, phone: e.target.value});
-                        if (errors.phone) setErrors(prev => ({...prev, phone: null}));
-                      }} 
+                        setFormData({ ...formData, phone: e.target.value });
+                        if (errors.phone) setErrors(prev => ({ ...prev, phone: null }));
+                      }}
                     />
-                    {errors.phone && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.phone}</p>}
+                    {errors.phone && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12} /> {errors.phone}</p>}
                   </div>
                 </div>
 
@@ -239,7 +264,7 @@ export function Contact() {
                         <option key={d.id} value={d.name}>{d.name}</option>
                       ))}
                     </select>
-                    {errors.domain && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.domain}</p>}
+                    {errors.domain && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12} /> {errors.domain}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -262,7 +287,7 @@ export function Contact() {
                         <option key={c.id} value={c.category_name}>{c.category_name}</option>
                       ))}
                     </select>
-                    {errors.category && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.category}</p>}
+                    {errors.category && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12} /> {errors.category}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -283,32 +308,32 @@ export function Contact() {
                           <option key={v.id} value={v.sub_value}>{v.sub_value}</option>
                         ))}
                     </select>
-                    {errors.interested_in && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.interested_in}</p>}
+                    {errors.interested_in && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12} /> {errors.interested_in}</p>}
                   </div>
                 </div>
 
                 {/* Email Field */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Email Address *</label>
-                  <Input 
-                    type="email" 
+                  <Input
+                    type="email"
                     className={`h-14 rounded-xl border-slate-200 ${errors.email ? 'border-red-500 bg-red-50/30' : ''}`}
-                    value={formData.email} 
+                    value={formData.email}
                     onChange={(e) => {
-                      setFormData({...formData, email: e.target.value});
-                      if (errors.email) setErrors(prev => ({...prev, email: null}));
-                    }} 
+                      setFormData({ ...formData, email: e.target.value });
+                      if (errors.email) setErrors(prev => ({ ...prev, email: null }));
+                    }}
                   />
-                  {errors.email && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12}/> {errors.email}</p>}
+                  {errors.email && <p className="text-[10px] text-red-500 font-bold ml-1 flex items-center gap-1"><AlertCircle size={12} /> {errors.email}</p>}
                 </div>
 
                 {/* Message Field */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Message (Optional)</label>
-                  <Textarea 
-                    className="min-h-[100px] rounded-xl border-slate-200" 
-                    value={formData.message} 
-                    onChange={(e) => setFormData({...formData, message: e.target.value})} 
+                  <Textarea
+                    className="min-h-[100px] rounded-xl border-slate-200"
+                    value={formData.message}
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                   />
                 </div>
 

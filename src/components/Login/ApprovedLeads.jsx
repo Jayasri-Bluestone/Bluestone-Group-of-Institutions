@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Mail, Phone, ChevronLeft, ChevronRight, UserMinus, RotateCcw, ShieldCheck, Search, AlertCircle, Clock } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import { confirmToast } from '../../utils/toastConfirm';
 import { API_BASE_URL } from '../../apiConfig';
+import { exportToCsv } from '../../utils/exportCsv';
 
 export function ApprovedLeads() {
   const [approvedLeads, setApprovedLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const itemsPerPage = 10;
 
   useEffect(() => {
@@ -38,65 +41,46 @@ export function ApprovedLeads() {
   };
 
   // --- CONFIRMATION: REVOKE (Move to Pending) ---
-  const confirmRevoke = (lead) => {
-    toast((t) => (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-slate-900">
-          Move <b>{lead.name}</b> back to Pending?
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              toast.dismiss(t.id);
-              handleRevoke(lead);
-            }}
-            className="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors"
-          >
-            Yes, Revoke
-          </button>
-          <button onClick={() => toast.dismiss(t.id)} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold">
-            Cancel
-          </button>
-        </div>
-      </div>
-    ), { duration: 5000, icon: <RotateCcw className="text-amber-500" /> });
+  const confirmRevoke = async (lead) => {
+    const confirmed = await confirmToast(`Move ${lead.name} back to Pending?`, "Revoke");
+    if (confirmed) {
+      handleRevoke(lead);
+    }
   };
 
   // --- CONFIRMATION: PERMANENT REMOVE ---
-  const confirmRemove = (id) => {
-    toast((t) => (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-slate-900">
-          Permanently delete this approved lead?
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              toast.dismiss(t.id);
-              handleRemove(id);
-            }}
-            className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
-          >
-            Yes, Delete
-          </button>
-          <button onClick={() => toast.dismiss(t.id)} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold">
-            Cancel
-          </button>
-        </div>
-      </div>
-    ), { duration: 5000, icon: <AlertCircle className="text-red-500" /> });
+  const confirmRemove = async (id) => {
+    const confirmed = await confirmToast("Permanently delete this approved lead?", "Delete");
+    if (confirmed) {
+      removeLeadById(id, { skipConfirm: true });
+    }
   };
 
   const handleRemove = async (id) => {
-    const tid = toast.loading("Deleting...");
+    return removeLeadById(id);
+  };
+
+  const removeLeadById = async (id, options = {}) => {
+    const { suppressStateUpdate = false, skipConfirm = false, suppressToast = false } = options;
+    if (!skipConfirm) {
+      const confirmed = await confirmToast("Permanently delete this approved lead?", "Delete");
+      if (!confirmed) return false;
+    }
+    const tid = suppressToast ? null : toast.loading("Deleting...");
     try {
       const response = await fetch(`${API_BASE_URL}/api/admin/approved-leads/${id}`, { method: 'DELETE' });
       if (response.ok) {
-        setApprovedLeads(prev => prev.filter(l => l.id !== id));
-        toast.success("Lead permanently removed", { id: tid });
+        if (!suppressStateUpdate) {
+          setApprovedLeads(prev => prev.filter(l => l.id !== id));
+        }
+        if (!suppressToast) toast.success("Lead permanently removed", { id: tid });
+        return true;
       }
+      if (!suppressToast) toast.error("Deletion failed", { id: tid });
+      return false;
     } catch (err) {
-      toast.error("Deletion failed", { id: tid });
+      if (!suppressToast) toast.error("Deletion failed", { id: tid });
+      return false;
     }
   };
 
@@ -125,9 +109,97 @@ export function ApprovedLeads() {
   const totalPages = Math.ceil(filteredLeads.length / itemsPerPage);
   const currentLeads = filteredLeads.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  const visibleLeadIds = useMemo(() => currentLeads.map((lead) => lead.id), [currentLeads]);
+  const selectedLeadSet = useMemo(() => new Set(selectedLeadIds), [selectedLeadIds]);
+  const allVisibleSelected =
+    visibleLeadIds.length > 0 && visibleLeadIds.every((id) => selectedLeadSet.has(id));
+
+  useEffect(() => {
+    setSelectedLeadIds((prev) => prev.filter((id) => visibleLeadIds.includes(id)));
+  }, [visibleLeadIds]);
+
+  const toggleSelectLead = (id) => {
+    setSelectedLeadIds((prev) => (
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    ));
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedLeadIds((prev) => prev.filter((id) => !selectedLeadSet.has(id)));
+      return;
+    }
+    setSelectedLeadIds((prev) => Array.from(new Set([...prev, ...visibleLeadIds])));
+  };
+
+  const bulkRemoveLeads = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const confirmed = await confirmToast(
+      `Delete ${selectedLeadIds.length} lead(s)?`,
+      "Delete"
+    );
+    if (!confirmed) return;
+    const tid = toast.loading(`Deleting ${selectedLeadIds.length} lead(s)...`);
+    const results = await Promise.all(
+      selectedLeadIds.map((id) =>
+        removeLeadById(id, { skipConfirm: true, suppressStateUpdate: true, suppressToast: true })
+      )
+    );
+    const failed = results.filter((ok) => !ok).length;
+    const successIds = selectedLeadIds.filter((id, index) => results[index]);
+    if (successIds.length > 0) {
+      setApprovedLeads((prev) => prev.filter((l) => !successIds.includes(l.id)));
+    }
+    if (failed > 0) {
+      toast.error(`${failed} lead(s) failed to delete`, { id: tid });
+    } else {
+      toast.success("Selected leads deleted", { id: tid });
+    }
+    setSelectedLeadIds([]);
+  };
+
+  const exportLeadsCsv = async () => {
+    const confirmed = await confirmToast("Export current table to CSV?", "Export");
+    if (!confirmed) return;
+    const columns = [
+      { header: "Date", accessor: (l) => formatDateTime(l.created_at).date },
+      { header: "Time", accessor: (l) => formatDateTime(l.created_at).time },
+      { header: "Name", accessor: (l) => l.name || "" },
+      { header: "Email", accessor: (l) => l.email || "" },
+      { header: "Phone", accessor: (l) => l.phone || "" },
+      { header: "Business Focus", accessor: (l) => l.business_focus || "" },
+    ];
+    await exportToCsv("approved-leads.csv", columns, currentLeads);
+  };
+
   return (
     <div className="space-y-6">
-      <Toaster position="top-right" />
+      <Toaster 
+        position="top-center" 
+        toastOptions={{ 
+          duration: 2000,
+          success: {
+            style: {
+              background: '#16a34a', /* green-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#16a34a',
+            },
+          },
+          error: {
+            style: {
+              background: '#dc2626', /* red-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#dc2626',
+            },
+          },
+        }} 
+      />
       
       {/* Header & Search */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl border border-slate-200 shadow-sm gap-4">
@@ -141,14 +213,31 @@ export function ApprovedLeads() {
           </div>
         </div>
 
-        <div className="relative w-full md:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input 
-            type="text"
-            placeholder="Search leads..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex w-full md:w-auto items-center gap-2">
+          <button
+            type="button"
+            onClick={bulkRemoveLeads}
+            disabled={selectedLeadIds.length === 0}
+            className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+          >
+            Delete Selected ({selectedLeadIds.length})
+          </button>
+          <button
+            type="button"
+            onClick={exportLeadsCsv}
+            className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
+          >
+            Export CSV
+          </button>
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text"
+              placeholder="Search leads..."
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
@@ -158,6 +247,14 @@ export function ApprovedLeads() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Select all leads"
+                  />
+                </th>
                 <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Enquiry Date</th>
                 <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Client Details</th>
                 <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Contact Info</th>
@@ -170,6 +267,14 @@ export function ApprovedLeads() {
                 const { date, time } = formatDateTime(lead.created_at);
                 return (
                   <tr key={lead.id} className="hover:bg-emerald-50/30 transition-colors group">
+                    <td className="p-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedLeadSet.has(lead.id)}
+                        onChange={() => toggleSelectLead(lead.id)}
+                        aria-label={`Select lead ${lead.name}`}
+                      />
+                    </td>
                     <td className="p-4">
                       <div className="text-[11px] font-bold text-slate-900 uppercase whitespace-nowrap">{date}</div>
                       <div className="text-[10px] text-slate-400 flex items-center gap-1 font-medium">
@@ -219,7 +324,7 @@ export function ApprovedLeads() {
                 )
               }) : (
                 <tr>
-                   <td colSpan="5" className="p-10 text-center text-slate-400 italic">No approved leads found.</td>
+                   <td colSpan="6" className="p-10 text-center text-slate-400 italic">No approved leads found.</td>
                 </tr>
               )}
             </tbody>

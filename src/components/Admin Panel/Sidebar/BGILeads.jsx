@@ -6,17 +6,18 @@ import Pagination from "../Layout/Pagination";
 import LoadingScreen from "../Layout/LoadingScreen";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import { confirmToast } from "../../../utils/toastConfirm";
+import { exportToCsv } from "../../../utils/exportCsv";
 
 const viewConfig = {
   "all-enquiry": { apiView: "all", title: "All Enquiries", forcedStatus: "New" },
-  "lead-status": { apiView: "all", title: "All Leads Status", forcedStatus: "Follow Up" },
+  "lead-status": { apiView: "all", title: "All Leads Status", forcedStatus: "Follow Up,Enrolled" },
   "waiting-confirmation": { apiView: "all", title: "Waiting for Confirmation", forcedStatus: "Waiting for Confirmation" },
   pendings: { apiView: "all", title: "Waiting for Confirmation", forcedStatus: "Waiting for Confirmation" },
   "payment-status": { apiView: "payment", title: "All Payment Status" },
   "invalid-enquiries": { apiView: "invalid", title: "All Invalid Enquiries", forcedStatus: "Closed" },
 };
 
-const BGILeads = () => {
+const BGILeads = ({ user }) => {
   const { view = "all-enquiry" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ const BGILeads = () => {
   const [historyCandidate, setHistoryCandidate] = useState("");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
 
   const [search, setSearch] = useState("");
   const [domain, setDomain] = useState("All");
@@ -41,7 +43,7 @@ const BGILeads = () => {
   const [sortBy, setSortBy] = useState("created_at");
   const [sortOrder, setSortOrder] = useState("desc");
   const [pageSize, setPageSize] = useState(10);
-  const AUTO_REFRESH_MS = 30000;
+  const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
 
   const getDomainSlug = (name = "") => {
     const mapping = {
@@ -94,8 +96,33 @@ const BGILeads = () => {
         });
         if (res.ok) {
           const json = await res.json();
-          setDomains(Array.isArray(json) ? json.map((d) => d.name) : []);
-          setMasterData(Array.isArray(json) ? json : []);
+          const allDomains = Array.isArray(json) ? json : [];
+          
+          const getTier = (u) => {
+            if (u?.tier) return u.tier;
+            if (['Main Admin', 'MD', 'GM'].includes(u?.role)) return 'SUPER_ADMIN';
+            if (['TL', 'Coordinator', 'Head'].includes(u?.role)) return 'ADMIN';
+            return 'STAFF';
+          };
+          
+          const tier = getTier(user);
+          const isSuperAdmin = tier === 'SUPER_ADMIN';
+          const isAdminTier = tier === 'ADMIN' || isSuperAdmin;
+          const userDomainsList = (user?.domain || '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+
+          let filteredMaster = allDomains;
+          if (!isSuperAdmin) {
+            filteredMaster = allDomains.filter(d => 
+              userDomainsList.includes(d.name.toLowerCase())
+            );
+          }
+
+          setDomains(filteredMaster.map((d) => d.name));
+          setMasterData(filteredMaster);
+          
+          // If admin has specific domains, default to 'All' to aggregate,
+          // or pick first one if they specifically want a single view.
+          // The search/filter logic handles 'All' by showing everything in masterData/domains list.
         }
       } catch {
         setDomains([]);
@@ -103,12 +130,16 @@ const BGILeads = () => {
       }
     };
     fetchDomains();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const fetchStaff = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff-list`, {
+        // Pass selected domain so only staff for that domain are shown in assignment dropdown
+        const domainParam = domain && domain !== 'All'
+          ? `?domain=${encodeURIComponent(domain)}`
+          : '';
+        const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff-list${domainParam}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         });
         if (res.ok) {
@@ -120,7 +151,7 @@ const BGILeads = () => {
       }
     };
     fetchStaff();
-  }, []);
+  }, [domain]); // re-fetch whenever the domain filter changes
 
   const fetchLeads = async (page = 1, limit = pageSize) => {
     setLoading(true);
@@ -350,6 +381,9 @@ const BGILeads = () => {
           if (wanted === "waiting for confirmation") {
             return st.includes("waiting");
           }
+          if (wanted.includes(',')) {
+              return wanted.split(',').map(s=>s.trim()).includes(st);
+          }
           return st === wanted;
         }
         return true;
@@ -433,10 +467,17 @@ const BGILeads = () => {
   };
 
   const deleteLead = async (id) => {
-    const confirmed = await confirmToast("Delete this lead?", "Delete");
-    if (!confirmed) return;
+    return deleteLeadById(id);
+  };
 
-    const tid = toast.loading("Deleting lead...");
+  const deleteLeadById = async (id, options = {}) => {
+    const { skipConfirm = false, suppressRefresh = false, suppressToast = false } = options;
+    if (!skipConfirm) {
+      const confirmed = await confirmToast("Delete this lead?", "Delete");
+      if (!confirmed) return false;
+    }
+
+    const tid = suppressToast ? null : toast.loading("Deleting lead...");
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${id}`, {
         method: "DELETE",
@@ -444,13 +485,15 @@ const BGILeads = () => {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast.error(err.message || err.msg || "Delete failed", { id: tid });
-        return;
+        if (!suppressToast) toast.error(err.message || err.msg || "Delete failed", { id: tid });
+        return false;
       }
-      toast.success("Lead deleted successfully", { id: tid });
-      fetchLeads(data.page || 1, pageSize);
+      if (!suppressToast) toast.success("Lead deleted successfully", { id: tid });
+      if (!suppressRefresh) fetchLeads(data.page || 1, pageSize);
+      return true;
     } catch {
-      toast.error("Delete failed", { id: tid });
+      if (!suppressToast) toast.error("Delete failed", { id: tid });
+      return false;
     }
   };
 
@@ -507,7 +550,7 @@ const BGILeads = () => {
   useEffect(() => {
     fetchLeads(1, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedView.apiView, search, domain, status, paymentStatus, invalidReason, sortBy, sortOrder, pageSize]);
+  }, [resolvedView.apiView, pageSize]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -515,7 +558,72 @@ const BGILeads = () => {
     }, AUTO_REFRESH_MS);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.page, pageSize, resolvedView.apiView, search, domain, status, paymentStatus, invalidReason, sortBy, sortOrder, todayOnly]);
+  }, [data.page, pageSize, resolvedView.apiView]);
+
+  const visibleLeadIds = useMemo(() => data.leads.map((lead) => lead.id), [data.leads]);
+  const selectedLeadSet = useMemo(() => new Set(selectedLeadIds), [selectedLeadIds]);
+  const allVisibleSelected =
+    visibleLeadIds.length > 0 && visibleLeadIds.every((id) => selectedLeadSet.has(id));
+
+  useEffect(() => {
+    setSelectedLeadIds((prev) => prev.filter((id) => visibleLeadIds.includes(id)));
+  }, [visibleLeadIds]);
+
+  const toggleSelectLead = (id) => {
+    setSelectedLeadIds((prev) => (
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    ));
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedLeadIds((prev) => prev.filter((id) => !selectedLeadSet.has(id)));
+      return;
+    }
+    setSelectedLeadIds((prev) => Array.from(new Set([...prev, ...visibleLeadIds])));
+  };
+
+  const bulkDeleteLeads = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const confirmed = await confirmToast(
+      `Delete ${selectedLeadIds.length} lead(s)?`,
+      "Delete"
+    );
+    if (!confirmed) return;
+    const tid = toast.loading(`Deleting ${selectedLeadIds.length} lead(s)...`);
+    const results = await Promise.all(
+      selectedLeadIds.map((id) =>
+        deleteLeadById(id, { skipConfirm: true, suppressRefresh: true, suppressToast: true })
+      )
+    );
+    const failed = results.filter((ok) => !ok).length;
+    if (failed > 0) {
+      toast.error(`${failed} lead(s) failed to delete`, { id: tid });
+    } else {
+      toast.success("Selected leads deleted", { id: tid });
+    }
+    setSelectedLeadIds([]);
+    fetchLeads(data.page || 1, pageSize);
+  };
+
+  const exportLeadsCsv = async () => {
+    const confirmed = await confirmToast("Export current table to CSV?", "Export");
+    if (!confirmed) return;
+    const columns = [
+      { header: "Lead ID", accessor: (l) => l.id },
+      { header: "Lead Code", accessor: (l) => l.lead_code || "" },
+      { header: "Candidate", accessor: (l) => l.student_name || "" },
+      { header: "Email", accessor: (l) => l.email || "" },
+      { header: "Phone", accessor: (l) => l.phone || "" },
+      { header: "Domain", accessor: (l) => l.domain || "" },
+      { header: "Category", accessor: (l) => l.category || "" },
+      { header: "Interest", accessor: (l) => l.interested_in || "" },
+      { header: "Assigned To", accessor: (l) => l.assigned_to_name || l.assigned_to || "" },
+      { header: "Date", accessor: (l) => (l.created_at ? new Date(l.created_at).toLocaleDateString("en-GB") : "") },
+      { header: "Status", accessor: (l) => l.status || "" },
+    ];
+    await exportToCsv("bgi-leads.csv", columns, data.leads);
+  };
 
   if (loading && data.leads.length === 0) {
     return <LoadingScreen message="Loading BGI leads..." fullPage={false} />;
@@ -541,7 +649,7 @@ const BGILeads = () => {
           />
         </div>
         <select value={domain} onChange={(e) => setDomain(e.target.value)} className="border border-slate-200 rounded-lg text-sm px-3 py-2">
-          <option value="All">All Domains</option>
+          <option value="All">{['Main Admin', 'MD', 'GM'].includes(user?.role) || user?.tier === 'SUPER_ADMIN' ? 'All Domains' : 'All Assigned Domains'}</option>
           {domains.map((d) => (
             <option key={d} value={d}>{d}</option>
           ))}
@@ -611,7 +719,25 @@ const BGILeads = () => {
             </button>
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total: {data.total}</div>
           </div>
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={bulkDeleteLeads}
+              disabled={selectedLeadIds.length === 0}
+              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+              title="Delete selected leads"
+            >
+              Delete Selected ({selectedLeadIds.length})
+            </button>
+            <button
+              type="button"
+              onClick={exportLeadsCsv}
+              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
+              title="Export CSV"
+            >
+              Export CSV
+            </button>
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
             <span>Show</span>
             <select
               value={pageSize}
@@ -623,6 +749,7 @@ const BGILeads = () => {
               <option value={50}>50</option>
               <option value={100}>100</option>
             </select>
+            </div>
           </div>
         </div>
 
@@ -630,6 +757,14 @@ const BGILeads = () => {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                <th className="p-3 border-r border-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Select all leads"
+                  />
+                </th>
                 <th className="p-3 border-r border-slate-100">Candidate</th>
                 <th className="p-3 border-r border-slate-100">Phone</th>
                   <th className="p-3 border-r border-slate-100">Domain</th>
@@ -644,6 +779,14 @@ const BGILeads = () => {
             <tbody className="divide-y divide-slate-100">
               {data.leads.length > 0 ? data.leads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-slate-50">
+                  <td className="p-3 border-r border-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={selectedLeadSet.has(lead.id)}
+                      onChange={() => toggleSelectLead(lead.id)}
+                      aria-label={`Select lead ${lead.student_name}`}
+                    />
+                  </td>
                   <td className="p-3 border-r border-slate-50">
                     <p className="font-bold text-slate-800">{lead.student_name}</p>
                     <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`} - {lead.domain}</p>
@@ -720,7 +863,7 @@ const BGILeads = () => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400">No leads found.</td>
+                  <td colSpan={10} className="py-16 text-center text-slate-400">No leads found.</td>
                 </tr>
               )}
             </tbody>

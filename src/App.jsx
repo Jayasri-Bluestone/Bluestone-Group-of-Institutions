@@ -42,6 +42,7 @@ import { AdminMediaManager } from './components/Login/AdminMediaManager';
 
 // --- PORTAL CRM IMPORTS (The /login side) ---
 import Layout from './components/Admin Panel/Layout/Layout';
+
 import DomainPage from './components/Admin Panel/Sidebar/Domain';
 import Dashboard from './components/Admin Panel/Sidebar/Dashboard';
 import BGILeads from './components/Admin Panel/Sidebar/BGILeads';
@@ -49,11 +50,11 @@ import LeadDetails from './components/Admin Panel/Sidebar/LeadDetails';
 import UserManagement from './components/Admin Panel/Sidebar/UserManagement';
 import MasterManagement from './components/Admin Panel/Sidebar/MasterManagement';
 import LiveFeedManager from './components/Admin Panel/Layout/Notification';
+import LiveFeedCalendar from './components/Admin Panel/Layout/LiveFeedCalendar';
 import LoginPage from './components/Admin Panel/Login/Login';
+import Profile from './components/Admin Panel/Sidebar/Profile';
 
 import { API_BASE_URL } from './apiConfig';
-
-// Helper: Scroll to top
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => {
@@ -65,6 +66,7 @@ function ScrollToTop() {
 // Domain Resolver for Portal
 const DomainResolver = ({ user }) => {
   const { slug } = useParams();
+  const { search } = useLocation();
   const mapping = {
     ias: 'Bluestone IAS Academy',
     techpark: 'Bluestone Techpark',
@@ -85,7 +87,7 @@ const DomainResolver = ({ user }) => {
     'bluestone-startup': 'Bluestone Startup',
   };
   const domainName = mapping[slug] || slug.replace(/-/g, ' ');
-  return <DomainPage domain={domainName} user={user} />;
+  return <DomainPage key={`${slug}${search}`} domain={domainName} user={user} />;
 };
 
 const LeadDetailsResolver = ({ user }) => {
@@ -172,7 +174,33 @@ export default function App() {
   return (
     <Router>
       <ScrollToTop />
-      <Toaster position="top-right" reverseOrder={false} />
+      <Toaster 
+        position="top-center" 
+        reverseOrder={false} 
+        toastOptions={{ 
+          duration: 2000,
+          success: {
+            style: {
+              background: '#16a34a', /* green-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#16a34a',
+            },
+          },
+          error: {
+            style: {
+              background: '#dc2626', /* red-600 */
+              color: '#fff',
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#dc2626',
+            },
+          },
+        }} 
+      />
       
       <Routes>
         {/* --- 1. PUBLIC WEBSITE ROUTES --- */}
@@ -233,19 +261,26 @@ export default function App() {
         {auth.isAuthenticated ? (
           <Route element={<Layout user={auth.user} onLogout={handleLogout} />}>
             <Route path="/portal/dashboard" element={<Dashboard user={auth.user} />} />
+            <Route path="/portal/profile" element={<Profile user={auth.user} onUpdateUser={(u) => setAuth({ isAuthenticated: true, user: u })} />} />
             <Route path="/portal/domain/:slug" element={<DomainResolver user={auth.user} />} />
             <Route path="/portal/domain/:slug/lead/:leadId" element={<LeadDetailsResolver user={auth.user} />} />
-            {getTier(auth.user) === 'SUPER_ADMIN' && (
-              <Route path="/portal/bgi/:view" element={<BGILeads />} />
+            {/* BGI route: Super Admin, Admin, or Staff with multiple domains */}
+            {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN' ||
+              (getTier(auth.user) === 'STAFF' && (auth.user?.domain || '').split(',').filter(Boolean).length > 1)) && (
+              <Route path="/portal/bgi/:view" element={<BGILeads user={auth.user} />} />
             )}
             
             {/* Role Restricted Portal Routes */}
             {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN') && (
               <Route path="/portal/live-feed" element={<LiveFeedManager user={auth.user} />} />
             )}
+            
+            {/* Calendar View accessible by all authenticated portal users */}
+            <Route path="/portal/live-feed-calendar" element={<LiveFeedCalendar user={auth.user} />} />
 
             {getTier(auth.user) === 'SUPER_ADMIN' && (
               <>
+                <Route path="/portal/users" element={<UserManagement user={auth.user} />} />
                 <Route path="/portal/user-management" element={<UserManagement user={auth.user} />} />
               </>
             )}
