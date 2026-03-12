@@ -12,7 +12,7 @@ import MultiDomainDropdown from "./MultiSelectDD";
 import { exportToCsv } from "../../../utils/exportCsv";
 
 
-const UserManagement = () => {
+const UserManagement = ({ user }) => {
   const [staff, setStaff] = useState([]);
   const [dynamicDomains, setDynamicDomains] = useState([]);
   const [roleHierarchy, setRoleHierarchy] = useState([]);

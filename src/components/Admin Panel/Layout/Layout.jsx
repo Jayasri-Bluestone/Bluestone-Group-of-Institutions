@@ -507,13 +507,14 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
       icon: { icon: <Database size={20} className="text-emerald-600" />, colorClass: "text-emerald-600", bgClass: "bg-emerald-50", borderClass: "border-emerald-600" },
       visible: isSuperAdmin,
     },
-    {
-      name: "User Management",
-      path: "/portal/users",
-      icon: { icon: <UserPlus size={20} className="text-indigo-600" />, colorClass: "text-indigo-600", bgClass: "bg-indigo-50", borderClass: "border-indigo-600" },
-      visible: isSuperAdmin,
-    },
+    // {
+    //   name: "User Management",
+    //   path: "/portal/user-management",
+    //   icon: { icon: <UserPlus size={20} className="text-indigo-600" />, colorClass: "text-indigo-600", bgClass: "bg-indigo-50", borderClass: "border-indigo-600" },
+    //   visible: isSuperAdmin,
+    // },
   ].filter((item) => item.visible);
+  
   const bgiSubMenu = [
     { name: "All Enquiries", path: "/portal/bgi/all-enquiry" },
     { name: "All Leads Status", path: "/portal/bgi/lead-status" },
@@ -528,6 +529,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     { name: "All Payment Status", path: `${domainPath}?view=payment` },
     { name: "All Invalid Enquiries", path: `${domainPath}?view=invalid` },
   ];
+  
   const isSubMenuPathActive = (subPath) => {
     const [pathOnly, queryOnly = ""] = subPath.split("?");
     if (location.pathname !== pathOnly) return false;
@@ -554,6 +556,16 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     const domainRootPath = `/${pathParts.slice(0, 3).join("/")}`;
     setOpenDomainMenus({ [domainRootPath]: true });
     setIsBgiMenuOpen(false);
+  }, [location.pathname]);
+
+  // Handle sidebar state reset for direct portal links
+  useEffect(() => {
+    const isDomain = location.pathname.startsWith("/portal/domain/");
+    const isBgi = location.pathname.startsWith("/portal/bgi/");
+    if (!isDomain && !isBgi) {
+      setOpenDomainMenus({});
+      setIsBgiMenuOpen(false);
+    }
   }, [location.pathname]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const handleEnquirySubmit = async (e) => {

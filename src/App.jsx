@@ -55,6 +55,7 @@ import LoginPage from './components/Admin Panel/Login/Login';
 import Profile from './components/Admin Panel/Sidebar/Profile';
 
 import { API_BASE_URL } from './apiConfig';
+
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => {
@@ -62,6 +63,18 @@ function ScrollToTop() {
   }, [pathname]);
   return null;
 }
+
+const PortalShell = ({ user, onLogout, onUpdateUser }) => {
+  const location = useLocation();
+  return (
+    <Layout
+      key={location.pathname}
+      user={user}
+      onLogout={onLogout}
+      onUpdateUser={onUpdateUser}
+    />
+  );
+};
 
 // Domain Resolver for Portal
 const DomainResolver = ({ user }) => {
@@ -233,7 +246,16 @@ export default function App() {
 
         {/* --- 2. AUTHENTICATION PAGES --- */}
         <Route path="/admin-login" element={<AdminLogin onLoginSuccess={handleLogin} />} />
-        <Route path="/portal" element={!auth.isAuthenticated ? <LoginPage onLoginSuccess={handleLogin} /> : <Navigate to="/portal/dashboard" replace />} />
+        <Route
+          path="/portal"
+          element={
+            !auth.isAuthenticated ? (
+              <LoginPage onLoginSuccess={handleLogin} />
+            ) : (
+              <Navigate to="/portal/dashboard" replace />
+            )
+          }
+        />
 
         {/* --- 3. ADMIN CMS ROUTES (/admin) --- */}
         {auth.isAuthenticated ? (
@@ -251,48 +273,55 @@ export default function App() {
           <Route path="/admin/*" element={<Navigate to="/admin-login" replace />} />
         )}
 
-        {/* --- 2. PORTAL AUTHENTICATION --- */}
-        <Route 
-          path="/portal" 
-          element={!auth.isAuthenticated ? <LoginPage onLoginSuccess={handleLogin} /> : <Navigate to="/portal/dashboard" replace />} 
-        />
-
-        {/* --- 4. PORTAL CRM ROUTES (/dashboard) --- */}
+        {/* --- 4. PORTAL CRM ROUTES (/portal/*) --- */}
         {auth.isAuthenticated ? (
-          <Route element={<Layout user={auth.user} onLogout={handleLogout} />}>
-            <Route path="/portal/dashboard" element={<Dashboard user={auth.user} />} />
-            <Route path="/portal/profile" element={<Profile user={auth.user} onUpdateUser={(u) => setAuth({ isAuthenticated: true, user: u })} />} />
-            <Route path="/portal/domain/:slug" element={<DomainResolver user={auth.user} />} />
-            <Route path="/portal/domain/:slug/lead/:leadId" element={<LeadDetailsResolver user={auth.user} />} />
+          <Route
+            path="/portal"
+            element={
+              <PortalShell
+                user={auth.user}
+                onLogout={handleLogout}
+                onUpdateUser={(u) => setAuth({ isAuthenticated: true, user: u })}
+              />
+            }
+          >
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard user={auth.user} />} />
+            <Route
+              path="profile"
+              element={
+                <Profile
+                  user={auth.user}
+                  onUpdateUser={(u) => setAuth({ isAuthenticated: true, user: u })}
+                />
+              }
+            />
+            <Route path="domain/:slug" element={<DomainResolver user={auth.user} />} />
+            <Route path="domain/:slug/lead/:leadId" element={<LeadDetailsResolver user={auth.user} />} />
             {/* BGI route: Super Admin, Admin, or Staff with multiple domains */}
             {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN' ||
               (getTier(auth.user) === 'STAFF' && (auth.user?.domain || '').split(',').filter(Boolean).length > 1)) && (
-              <Route path="/portal/bgi/:view" element={<BGILeads user={auth.user} />} />
+              <Route path="bgi/:view" element={<BGILeads user={auth.user} />} />
             )}
-            
+
             {/* Role Restricted Portal Routes */}
             {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN') && (
-              <Route path="/portal/live-feed" element={<LiveFeedManager user={auth.user} />} />
+              <Route path="live-feed" element={<LiveFeedManager user={auth.user} />} />
             )}
-            
+
             {/* Calendar View accessible by all authenticated portal users */}
-            <Route path="/portal/live-feed-calendar" element={<LiveFeedCalendar user={auth.user} />} />
+            <Route path="live-feed-calendar" element={<LiveFeedCalendar user={auth.user} />} />
 
             {getTier(auth.user) === 'SUPER_ADMIN' && (
               <>
-                <Route path="/portal/users" element={<UserManagement user={auth.user} />} />
-                <Route path="/portal/user-management" element={<UserManagement user={auth.user} />} />
+                <Route path="user-management" element={<UserManagement user={auth.user} />} />
+                <Route path="master" element={<MasterManagement user={auth.user} />} />
               </>
             )}
-
-            {getTier(auth.user) === 'SUPER_ADMIN' && (
-              <>
-                <Route path="/portal/master" element={<MasterManagement user={auth.user} />} />
-              </>
-            )}
+            <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Route>
         ) : (
-          <Route path="/portal/dashboard/*" element={<Navigate to="/portal" replace />} />
+          <Route path="/portal/*" element={<Navigate to="/portal" replace />} />
         )}
 
         {/* 404 Catch-all */}

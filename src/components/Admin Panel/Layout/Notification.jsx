@@ -16,7 +16,7 @@ import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import Pagination from "./Pagination";
 import { exportToCsv } from "../../../utils/exportCsv";
 
-const LiveFeedManager = () => {
+const LiveFeedManager = ({ user }) => {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -287,9 +287,13 @@ const LiveFeedManager = () => {
     visibleNotificationIds.every((id) => selectedNotificationSet.has(id));
 
   useEffect(() => {
-    setSelectedNotificationIds((prev) =>
-      prev.filter((id) => visibleNotificationIds.includes(id))
-    );
+    setSelectedNotificationIds((prev) => {
+      const next = prev.filter((id) => visibleNotificationIds.includes(id));
+      if (next.length === prev.length && next.every((id, idx) => id === prev[idx])) {
+        return prev;
+      }
+      return next;
+    });
   }, [visibleNotificationIds]);
 
   const toggleSelectNotification = (id) => {
