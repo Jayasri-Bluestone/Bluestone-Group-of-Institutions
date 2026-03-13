@@ -147,10 +147,10 @@ const [showHistory,setShowHistory] = useState(false);
         body: JSON.stringify({ leadId: Number(leadId), remarks: remarksDraft }),
       });
       if (!res.ok) throw new Error();
-      toast.success("Remark saved", { id: tid });
+      toast.success("Remark saved", { id: tid, duration: 3000 });
       setLead((prev) => (prev ? { ...prev, remarks: remarksDraft } : prev));
     } catch {
-      toast.error("Save failed", { id: tid });
+      toast.error("Save failed", { id: tid, duration: 4000 });
     }
   };
 
@@ -169,10 +169,10 @@ const [showHistory,setShowHistory] = useState(false);
         const err = await res.json().catch(() => ({}));
         throw new Error(err.msg || err.error || "Save failed");
       }
-      toast.success("Payment details updated", { id: tid });
+      toast.success("Payment details updated", { id: tid, duration: 3000 });
       setLead((prev) => (prev ? { ...prev, ...paymentDraft } : prev));
     } catch (err) {
-      toast.error(err.message || "Save failed", { id: tid });
+      toast.error(err.message || "Save failed", { id: tid, duration: 4000 });
     }
   };
 
@@ -228,102 +228,103 @@ const [showHistory,setShowHistory] = useState(false);
     });
   };
 
-  const saveAndSendMessage = async () => {
-
-  if (
-    !String(messageDraft.ref_id).trim() ||
-    !messageDraft.subject.trim() ||
-    !messageDraft.description.trim()
-  ) {
-    toast.error("Ref ID, Subject and Description are required");
-    return;
-  }
-
-  setIsSendingMessage(true);
-
-  const tid = toast.loading("Saving and sending...");
-
-  try {
-
-    const isEditing = Boolean(editingMessageId);
-
-    const endpoint = isEditing
-      ? `${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/${editingMessageId}`
-      : `${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/send`;
-
-    const payload = {
-      ref_id: lead.id,
-      subject: messageDraft.subject,
-      description: messageDraft.description,
-      recipientUserIds: messageDraft.recipientUserIds,
-      attachment_base64: messageDraft.attachment,
-      attachment_name: messageDraft.attachmentName,
-      attachment_type: messageDraft.attachmentType
-    };
-
-    const res = await fetch(endpoint, {
-      method: isEditing ? "PUT" : "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      toast.error(json.msg || json.error || "Save/Send failed", { id: tid });
+  const saveAndSendMessage = async (sendMail = true) => {
+    if (
+      !String(messageDraft.ref_id).trim() ||
+      !messageDraft.subject.trim() ||
+      !messageDraft.description.trim()
+    ) {
+      toast.error("Ref ID, Subject and Description are required");
       return;
     }
+    if (isSendingMessage) return;
 
-    toast.success("Message sent successfully", { id: tid });
+    setIsSendingMessage(true);
+    const tid = toast.loading(sendMail ? "Saving and sending..." : "Saving message...");
 
-    // reset form
-    setMessageDraft({
-      ref_id: String(lead.lead_code || lead.id),
-      subject: "",
-      description: "",
-      recipientUserIds: messageDraft.recipientUserIds,
-      attachment: null,
-      attachmentName: "",
-      attachmentType: ""
-    });
+    try {
+      const isEditing = Boolean(editingMessageId);
+      const endpoint = isEditing
+        ? `${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/${editingMessageId}`
+        : `${API_BASE_URL_PORTAL}/api/leads/${leadId}/remark-messages/send`;
 
-    setShowAddMessage(false);
-    setEditingMessageId(null);
+      const payload = {
+        ref_id: lead.id,
+        subject: messageDraft.subject,
+        description: messageDraft.description,
+        recipientUserIds: messageDraft.recipientUserIds,
+        attachment_base64: messageDraft.attachment,
+        attachment_name: messageDraft.attachmentName,
+        attachment_type: messageDraft.attachmentType,
+        send_mail: sendMail
+      };
 
-    await fetchRemarkMessages();
+      const res = await fetch(endpoint, {
+        method: isEditing ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(payload),
+      });
 
-  } catch (err) {
+      const json = await res.json().catch(() => ({}));
 
-    console.error(err);
-    toast.error("Send failed", { id: tid });
+      if (!res.ok) {
+        toast.error(json.msg || json.error || "Save/Send failed", { id: tid, duration: 4000 });
+        return;
+      }
 
-  } finally {
+      toast.success(sendMail ? "Message sent successfully" : "Message saved successfully", { id: tid, duration: 3000 });
 
-    setIsSendingMessage(false);
+      // reset form
+      setMessageDraft({
+        ref_id: String(lead.lead_code || lead.id),
+        subject: "",
+        description: "",
+        recipientUserIds: messageDraft.recipientUserIds,
+        attachment: null,
+        attachmentName: "",
+        attachmentType: ""
+      });
 
-  }
-};
+      setShowAddMessage(false);
+      setEditingMessageId(null);
+      await fetchRemarkMessages();
+    } catch (err) {
+      console.error(err);
+      toast.error("Process failed", { id: tid, duration: 4000 });
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
 
   const startEditMessage = (message) => {
-    let ids = [];
+    let storedIds = [];
     try {
-      const parsed = JSON.parse(lead.ids || "[]");
-      ids = Array.isArray(parsed) ? parsed.map((v) => Number(v)).filter((v) => Number.isInteger(v)) : [];
+      const raw = localStorage.getItem(recipientPrefKey);
+      const parsed = JSON.parse(raw || "[]");
+      storedIds = Array.isArray(parsed)
+        ? parsed.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0)
+        : [];
     } catch {
-      ids = String(lead.id || "")
-        .split(",")
-        .map((v) => Number(v.trim()))
-        .filter((v) => Number.isInteger(v) && v > 0);
+      storedIds = [];
     }
+
+    // Default active user if not already in stored list
+    if (user?.id && !storedIds.includes(Number(user.id))) {
+      storedIds.push(Number(user.id));
+    }
+
+    // Apply only users available in current lead domain staff list.
+    const allowed = new Set(domainStaff.map((s) => Number(s.id)));
+    const applicableIds = storedIds.filter((id) => allowed.has(id));
 
     setMessageDraft({
       ref_id: lead.lead_code || lead.id || "",
       subject: message.subject || "",
       description: message.description || "",
-      recipientUserIds: ids,
+      recipientUserIds: applicableIds,
       attachment: message.attachment_base64 || null,
       attachmentName: message.attachment_name || "",
       attachmentType: message.attachment_type || ""
@@ -346,12 +347,17 @@ const [showHistory,setShowHistory] = useState(false);
       storedIds = [];
     }
 
+    // Default active user if not already in stored list
+    if (user?.id && !storedIds.includes(Number(user.id))) {
+      storedIds.push(Number(user.id));
+    }
+
     // Apply only users available in current lead domain staff list.
     const allowed = new Set(domainStaff.map((s) => Number(s.id)));
     const applicableIds = storedIds.filter((id) => allowed.has(id));
 
     setMessageDraft((prev) => ({ ...prev, recipientUserIds: applicableIds }));
-  }, [domainStaff, editingMessageId, recipientPrefKey]);
+  }, [domainStaff, editingMessageId, recipientPrefKey, user?.id]);
 
   const deleteMessage = async (messageId) => {
     if (!(await confirmToast("Are you sure you want to delete this message?"))) {
@@ -365,14 +371,14 @@ const [showHistory,setShowHistory] = useState(false);
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.msg || json.error || "Delete failed");
-      toast.success("Message deleted", { id: tid });
+      toast.success("Message deleted", { id: tid, duration: 3000 });
       if (editingMessageId === messageId) {
         setEditingMessageId(null);
         setShowAddMessage(false);
       }
       await fetchRemarkMessages();
     } catch (err) {
-      toast.error(err.message || "Delete failed", { id: tid });
+      toast.error(err.message || "Delete failed", { id: tid, duration: 4000 });
     }
   };
 
@@ -514,10 +520,10 @@ const [showHistory,setShowHistory] = useState(false);
               ) : (
                 visibleMessages.map((m) => (
                   <tr key={m.id} className="border-t border-slate-100 align-top">
-                    <td className="p-3 font-bold text-slate-700">{messageDraft.ref_id}</td>
+                    <td className="p-3 font-bold text-slate-700">{lead.lead_code || m.ref_id || lead.id}</td>
                     <td className="p-3 font-semibold text-slate-700">{m.subject}</td>
                     <td className="p-3 text-slate-600 whitespace-pre-wrap">{m.description}</td>
-                   <td className="p-3">
+                    <td className="p-3">
   {m.attachment_base64 ? (
 
     m.attachment_type?.startsWith("image") ? (
@@ -685,7 +691,7 @@ Selected: {messageDraft.attachmentName}
                 <thead className="bg-slate-50">
                   <tr className="text-[10px] uppercase text-slate-500 font-black">
                     <th className="p-2">Send Mail</th>
-                    <th className="p-2">User ID</th>
+                    <th className="p-2">Employee ID</th>
                     <th className="p-2">Name</th>
                     <th className="p-2">Role</th>
                     <th className="p-2">Email</th>
@@ -725,7 +731,7 @@ Selected: {messageDraft.attachmentName}
                             </span>
                           </button>
                         </td>
-                        <td className="p-2">{s.id}</td>
+                        <td className="p-2">{s.employee_id || "-"}</td>
                         <td className="p-2 font-semibold">{s.name}</td>
                         <td className="p-2">{s.role}</td>
                         <td className="p-2">{s.email || "-"}</td>
@@ -738,15 +744,33 @@ Selected: {messageDraft.attachmentName}
               </table>
             </div>
 
-            <button
-  onClick={saveAndSendMessage}
-  disabled={isSendingMessage}
-  className={`px-4 py-2 text-[10px] font-black rounded-lg text-white
-    ${isSendingMessage ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}
-  `}
->
-  {isSendingMessage ? "Sending..." : editingMessageId ? "Update And Re-Send" : "Save And Send"}
-</button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => saveAndSendMessage(true)}
+                disabled={isSendingMessage}
+                className={`px-4 py-2 text-[10px] font-black rounded-lg text-white
+                  ${isSendingMessage ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}
+                `}
+              >
+                {isSendingMessage ? "Sending..." : editingMessageId ? "Update And Re-Send" : "Save And Send"}
+              </button>
+              {editingMessageId && (
+                <button
+                  onClick={() => saveAndSendMessage(false)}
+                  disabled={isSendingMessage}
+                  className={`px-4 py-2 text-[10px] font-black rounded-lg text-white
+                    ${isSendingMessage ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"}
+                  `}
+                >
+                  {isSendingMessage ? "Saving..." : "Save Changes (No Resend)"}
+                </button>
+              )}
+            </div>
+            {isSendingMessage && (
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                Processing message...
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -771,6 +795,7 @@ Selected: {messageDraft.attachmentName}
               <tr>
                 <th className="p-2">Subject</th>
                 <th className="p-2">Description</th>
+                <th className="p-2">Attachment</th>
                 <th className="p-2">Edited By</th>
                 <th className="p-2">Edited At</th>
               </tr>
@@ -788,6 +813,26 @@ Selected: {messageDraft.attachmentName}
                   <tr key={h.id} className="border-t">
                     <td className="p-2">{h.subject}</td>
                     <td className="p-2 whitespace-pre-wrap">{h.description}</td>
+                    <td className="p-2">
+                      {h.attachment_base64 ? (
+                        h.attachment_type?.startsWith("image") ? (
+                          <img
+                            src={h.attachment_base64}
+                            alt={h.attachment_name}
+                            className="w-12 h-12 object-cover rounded border cursor-pointer"
+                            onClick={() => window.open(h.attachment_base64, "_blank")}
+                          />
+                        ) : h.attachment_type === "application/pdf" ? (
+                          <a href={h.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-red-600 font-bold text-[10px]">
+                            📄 PDF
+                          </a>
+                        ) : (
+                          <a href={h.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-[10px]">
+                            Download
+                          </a>
+                        )
+                      ) : "-"}
+                    </td>
                     <td className="p-2">{h.edited_by}</td>
                     <td className="p-2">
                       {new Date(h.edited_at).toLocaleString()}
@@ -813,7 +858,5 @@ const InfoRow = ({ label, value }) => (
     <p className="text-sm font-semibold text-slate-700 break-words">{value}</p>
   </div>
 );
-
-
 
 export default LeadDetails;

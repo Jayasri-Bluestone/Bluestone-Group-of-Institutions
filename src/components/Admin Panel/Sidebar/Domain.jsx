@@ -285,11 +285,19 @@ const resetFilters = () => {
         const pendingQ = qp.get('pending');
         const todayQ = qp.get('today');
         const viewQ = qp.get('view');
-        setStatusFilter(statusQ || 'All');
-        setPendingOnly(pendingQ === '1');
-        setTodayOnly(todayQ === '1');
+        
         const normalizedView = (viewQ || 'all').toLowerCase();
         setViewMode(normalizedView === 'pending' ? 'waiting' : normalizedView);
+
+        // If view is 'all' (All Enquiries) and no explicit status is provided, default to 'New'
+        if ((!viewQ || normalizedView === 'all') && !statusQ) {
+            setStatusFilter('New');
+        } else {
+            setStatusFilter(statusQ || 'All');
+        }
+
+        setPendingOnly(pendingQ === '1');
+        setTodayOnly(todayQ === '1');
     }, [location.search]);
     useEffect(() => {
         if (!focusLeadId || hasFocusedLeadRef.current || data.leads.length === 0) return;
@@ -403,7 +411,7 @@ const resetFilters = () => {
         );
     })();
     const matchesViewMode = (() => {
-        if (viewMode === 'all') return true;
+        if (viewMode === 'all') return leadStatus === 'new';
         if (viewMode === 'lead-status') return leadStatus === 'follow up' || leadStatus === 'enrolled';
         if (viewMode === 'waiting') {
             const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
@@ -659,7 +667,7 @@ const allValues = categories.flatMap(c => c.values || []);
                         className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
                         title="Export CSV"
                     >
-                        Export CSV
+                        Export
                     </button>
                     <button
                         onClick={() => fetchDomainData(data.page, pageSize)}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Logo from "../../../assets/BGOI Logo.png"
@@ -68,6 +68,8 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const [showNotiPanel, setShowNotiPanel] = useState(false);
   const [openDomainMenus, setOpenDomainMenus] = useState({});
   const [menuRefreshNonce, setMenuRefreshNonce] = useState(0);
+  const sessionExpiredRef = useRef(false);
+  const SESSION_CHECK_MS = 60000;
   // Data States
   const [masterData, setMasterData] = useState([]);
   const [availableCategories, setAvailableCategories] = useState([]);
@@ -75,6 +77,40 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+
+  useEffect(() => {
+    checkSessionExpiry();
+    const timer = setInterval(checkSessionExpiry, SESSION_CHECK_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  const decodeJwtPayload = (token) => {
+    try {
+      const base64 = token.split(".")[1];
+      if (!base64) return null;
+      const normalized = base64.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+      return JSON.parse(atob(padded));
+    } catch {
+      return null;
+    }
+  };
+
+  const checkSessionExpiry = () => {
+    if (sessionExpiredRef.current) return;
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    const payload = decodeJwtPayload(token);
+    const exp = payload?.exp ? Number(payload.exp) : null;
+    if (!exp) return;
+    const now = Math.floor(Date.now() / 1000);
+    if (now >= exp) {
+      sessionExpiredRef.current = true;
+      toast.error("Session expired. Please login again.");
+      onLogout?.();
+      navigate("/portal", { replace: true });
+    }
+  };
 
   const validateForm = () => {
     const errors = {};
@@ -319,6 +355,16 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     );
     setAvailableCategories(selectedDomain?.categories || []);
   }, [enquiryData.domain, masterData]);
+  const sortedMasterData = useMemo(() => {
+    return [...masterData].sort((a, b) => {
+      const aSeq = Number.isFinite(Number(a.sequence)) ? Number(a.sequence) : Number.POSITIVE_INFINITY;
+      const bSeq = Number.isFinite(Number(b.sequence)) ? Number(b.sequence) : Number.POSITIVE_INFINITY;
+      if (aSeq !== bSeq) return aSeq - bSeq;
+      const aName = String(a.name || '');
+      const bName = String(b.name || '');
+      return aName.localeCompare(bName);
+    });
+  }, [masterData]);
   const getSlug = (name = "") => {
     const cleanName = String(name || "").trim();
     const normalized = cleanName.toLowerCase().replace(/^bluestone\s+/, "");
@@ -480,6 +526,28 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
       return udClean === withoutPrefix || ud === lower;
     });
   };
+  const getDefaultEnquiryDomain = () => {
+    const raw = String(user?.domain || '').trim();
+    const normalized = raw.toLowerCase();
+    if (!raw || normalized === 'all') {
+      return masterData[0]?.name || '';
+    }
+    const first = raw.split(',').map(s => s.trim()).filter(Boolean)[0] || '';
+    if (!first) return masterData[0]?.name || '';
+    const firstNormalized = first.toLowerCase().replace(/^bluestone\s+/, '');
+    const match = masterData.find((d) => {
+      const nameNormalized = String(d.name || '').toLowerCase().replace(/^bluestone\s+/, '');
+      return nameNormalized === firstNormalized;
+    });
+    return match?.name || masterData[0]?.name || '';
+  };
+  useEffect(() => {
+    if (enquiryData.domain) return;
+    const fallback = getDefaultEnquiryDomain();
+    if (fallback) {
+      setEnquiryData((prev) => ({ ...prev, domain: fallback }));
+    }
+  }, [masterData, user?.domain, enquiryData.domain]);
   const dynamicMenu = [
     {
       name: "Dashboard",
@@ -487,7 +555,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
       icon: { icon: <LayoutDashboard size={20} className="text-red-600" />, colorClass: "text-red-600", bgClass: "bg-red-50", borderClass: "border-red-600" },
       visible: true,
     },
-    ...masterData.map((d) => ({
+    ...sortedMasterData.map((d) => ({
       name: d.name,
       path: `/portal/domain/${getSlug(d.name)}`,
       icon: getDomainMenuIcon(d),
@@ -505,14 +573,8 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
       name: "Master",
       path: "/portal/master",
       icon: { icon: <Database size={20} className="text-emerald-600" />, colorClass: "text-emerald-600", bgClass: "bg-emerald-50", borderClass: "border-emerald-600" },
-      visible: isSuperAdmin,
+      visible: isAdminTier,
     },
-    // {
-    //   name: "User Management",
-    //   path: "/portal/user-management",
-    //   icon: { icon: <UserPlus size={20} className="text-indigo-600" />, colorClass: "text-indigo-600", bgClass: "bg-indigo-50", borderClass: "border-indigo-600" },
-    //   visible: isSuperAdmin,
-    // },
   ].filter((item) => item.visible);
   
   const bgiSubMenu = [
@@ -1348,7 +1410,7 @@ ${isSelected
             )}
             <div className="flex justify-end mt-8 pb-4">
               <p className="text-[12px] text-slate-300 font-medium ">
-                Bluestone Group of Institutions V1.0.0
+                Bluestone Group of Institutions V2.0.0
               </p>
             </div>
           </main>
@@ -1387,9 +1449,7 @@ ${isSelected
                     className={`w-full p-2.5 border rounded-lg bg-slate-50 text-sm outline-none focus:ring-2 ${validationErrors.domain ? "border-red-500 ring-red-500/20" : "ring-red-500/20"}`}
                   >
                     <option value="">Select Domain</option>
-                    {masterData
-                      ?.filter(d => isSuperAdmin || isUserDomain(d.name))
-                      .map((d) => (
+                    {sortedMasterData.map((d) => (
                         <option key={d.id} value={d.name}>
                           {d.name}
                         </option>

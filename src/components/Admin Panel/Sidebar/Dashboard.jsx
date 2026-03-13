@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Users, PhoneCall, GraduationCap, XCircle,
-  AlertCircle, 
-  Calendar, Filter, RefreshCcw
+import {
+    Users, PhoneCall, GraduationCap, XCircle,
+    AlertCircle,
+    Calendar, Filter, RefreshCcw
 } from 'lucide-react';
 import LoadingScreen from '../Layout/LoadingScreen';
 import Pagination from '../Layout/Pagination';
@@ -13,7 +13,7 @@ import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 
 const Dashboard = ({ user }) => {
     const navigate = useNavigate();
-    
+
     const [stats, setStats] = useState({
         totalEnquiry: 0, totalFollowup: 0, totalAdmission: 0,
         totalPending: 0,
@@ -28,11 +28,11 @@ const Dashboard = ({ user }) => {
     const [globalFilter, setGlobalFilter] = useState('All');
     const [appliedGlobalFilter, setAppliedGlobalFilter] = useState('All');
     const [isLoading, setIsLoading] = useState(true);
-    
+
     // Pagination States
     const [todayPage, setTodayPage] = useState(1);
     const [todayLimit, setTodayLimit] = useState(5);
-    
+
     const [statusPage, setStatusPage] = useState(1);
     const [statusLimit, setStatusLimit] = useState(5);
     const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
@@ -147,7 +147,7 @@ const Dashboard = ({ user }) => {
                         .map((d) => (typeof d === 'string' ? d : d?.name))
                         .filter(Boolean)
                     : [];
-                
+
                 if (isSuperAdmin) {
                     setDomains(domainNames);
                 } else if (isAdminTier && hasMultipleDomains) {
@@ -263,13 +263,17 @@ const Dashboard = ({ user }) => {
 
             const todayConvertedRows = allEnquiries.filter((lead) => {
                 const st = String(lead.status || '').trim().toLowerCase();
-                if (st === 'new') return false;
                 const d = new Date(lead.created_at);
-                return (
+                const isToday =
                     d.getFullYear() === now.getFullYear() &&
                     d.getMonth() === now.getMonth() &&
-                    d.getDate() === now.getDate()
-                );
+                    d.getDate() === now.getDate();
+
+                if (!isToday) return false;
+
+                // User says: Today's enquiry show only status new, 
+                // if updated status new to other it should show only status table
+                return (st !== 'new');
             });
             setStatusLeads(todayConvertedRows);
         } finally {
@@ -293,19 +297,19 @@ const Dashboard = ({ user }) => {
     }
 
     const MiniStatCard = ({ title, value, label, color, bgColor, onClick }) => (
-    <button onClick={onClick} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm text-left hover:shadow-md transition-all">
-        <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{title}</p>
-            <div className="flex items-baseline gap-2">
-                <h4 className={`text-2xl font-black ${color}`}>{value}</h4>
-                <span className="text-[10px] text-slate-500 font-medium">{label}</span>
+        <button onClick={onClick} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm text-left hover:shadow-md transition-all">
+            <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{title}</p>
+                <div className="flex items-baseline gap-2">
+                    <h4 className={`text-2xl font-black ${color}`}>{value}</h4>
+                    <span className="text-[10px] text-slate-500 font-medium">{label}</span>
+                </div>
             </div>
-        </div>
-        <div className={`${bgColor} ${color} px-2 py-1 rounded-lg text-[10px] font-black uppercase`}>
-            Live
-        </div>
-    </button>
-);
+            <div className={`${bgColor} ${color} px-2 py-1 rounded-lg text-[10px] font-black uppercase`}>
+                Live
+            </div>
+        </button>
+    );
 
     return (
         <div className="p-6 space-y-8 bg-slate-50 min-h-screen">
@@ -336,66 +340,66 @@ const Dashboard = ({ user }) => {
 
 
             {/* Stat Cards Grid */}
-<div className="space-y-6">
-    {/* Tier 1: Life-time Totals (Large) */}
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-        <StatCard title="Total Enquiry" value={stats.totalEnquiry} icon={<Users />} color="bg-gradient-to-br from-rose-700 to-rose-500" onClick={() => handleCardClick('totalEnquiry')} />
-        <StatCard title="Total Followup" value={stats.totalFollowup} icon={<PhoneCall />} color="bg-gradient-to-br from-orange-600 to-amber-500" onClick={() => handleCardClick('totalFollowup')} />
-        <StatCard title="Total Admission" value={stats.totalAdmission} icon={<GraduationCap />} color="bg-gradient-to-br from-emerald-700 to-emerald-500" onClick={() => handleCardClick('totalAdmission')} />
-        <StatCard title="Total Pendings" value={stats.totalPending} icon={<AlertCircle />} color="bg-gradient-to-br from-slate-800 to-slate-600" onClick={() => handleCardClick('totalPending')} />
-        <StatCard title="Total Invalid Enquiries" value={stats.totalInvalid} icon={<XCircle />} color="bg-gradient-to-br from-red-700 to-red-500" onClick={() => handleCardClick('totalInvalid')} />
-    </div>
+            <div className="space-y-6">
+                {/* Tier 1: Life-time Totals (Large) */}
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                    <StatCard title="Total Enquiry" value={stats.totalEnquiry} icon={<Users />} color="bg-gradient-to-br from-rose-700 to-rose-500" onClick={() => handleCardClick('totalEnquiry')} />
+                    <StatCard title="Total Followup" value={stats.totalFollowup} icon={<PhoneCall />} color="bg-gradient-to-br from-orange-600 to-amber-500" onClick={() => handleCardClick('totalFollowup')} />
+                    <StatCard title="Total Admission" value={stats.totalAdmission} icon={<GraduationCap />} color="bg-gradient-to-br from-emerald-700 to-emerald-500" onClick={() => handleCardClick('totalAdmission')} />
+                    <StatCard title="Total Pendings" value={stats.totalPending} icon={<AlertCircle />} color="bg-gradient-to-br from-slate-800 to-slate-600" onClick={() => handleCardClick('totalPending')} />
+                    <StatCard title="Total Invalid Enquiries" value={stats.totalInvalid} icon={<XCircle />} color="bg-gradient-to-br from-red-700 to-red-500" onClick={() => handleCardClick('totalInvalid')} />
+                </div>
 
-    {/* Tier 2: Today's Snapshot (Compact) */}
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <MiniStatCard 
-            title="Today's Enquiries" 
-            value={stats.todayEnquiry} 
-            color="text-red-600" 
-            bgColor="bg-red-100" 
-            onClick={() => handleCardClick('totalEnquiry')}
-        />
-        <MiniStatCard 
-            title="Today's Followups" 
-            value={stats.todayFollowup} 
-            color="text-orange-600" 
-            bgColor="bg-orange-100" 
-            onClick={() => handleCardClick('totalFollowup')}
-        />
-        <MiniStatCard 
-            title="Today's Admissions" 
-            value={stats.todayAdmission}
-            color="text-emerald-600" 
-            bgColor="bg-emerald-100" 
-            onClick={() => handleCardClick('totalAdmission')}
-        />
-        <MiniStatCard 
-            title="Today's Pendings" 
-            value={stats.todayPending} 
-            color="text-slate-700" 
-            bgColor="bg-slate-200" 
-            onClick={() => handleCardClick('todayPending')}
-        />
-        <MiniStatCard 
-            title="Today's Invalid Enquiries" 
-            value={stats.todayInvalid} 
-            color="text-rose-700" 
-            bgColor="bg-rose-100" 
-            onClick={() => handleCardClick('todayInvalid')}
-        />
-    </div>
-</div>
+                {/* Tier 2: Today's Snapshot (Compact) */}
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <MiniStatCard
+                        title="Today's Enquiries"
+                        value={stats.todayEnquiry}
+                        color="text-red-600"
+                        bgColor="bg-red-100"
+                        onClick={() => handleCardClick('totalEnquiry')}
+                    />
+                    <MiniStatCard
+                        title="Today's Followups"
+                        value={stats.todayFollowup}
+                        color="text-orange-600"
+                        bgColor="bg-orange-100"
+                        onClick={() => handleCardClick('totalFollowup')}
+                    />
+                    <MiniStatCard
+                        title="Today's Admissions"
+                        value={stats.todayAdmission}
+                        color="text-emerald-600"
+                        bgColor="bg-emerald-100"
+                        onClick={() => handleCardClick('totalAdmission')}
+                    />
+                    <MiniStatCard
+                        title="Today's Pendings"
+                        value={stats.todayPending}
+                        color="text-slate-700"
+                        bgColor="bg-slate-200"
+                        onClick={() => handleCardClick('todayPending')}
+                    />
+                    <MiniStatCard
+                        title="Today's Invalid Enquiries"
+                        value={stats.todayInvalid}
+                        color="text-rose-700"
+                        bgColor="bg-rose-100"
+                        onClick={() => handleCardClick('todayInvalid')}
+                    />
+                </div>
+            </div>
 
             {/* Main Content Lists */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <LeadList 
-                    title="Today's Enquiry" data={todayLeads} icon={<Calendar className="text-red-600"/>} color="bg-red-50" badgeColor="bg-red-600"
+                <LeadList
+                    title="Today's Enquiry" data={todayLeads} icon={<Calendar className="text-red-600" />} color="bg-red-50" badgeColor="bg-red-600"
                     currentPage={todayPage} setCurrentPage={setTodayPage} pageSize={todayLimit} setPageSize={setTodayLimit} userTier={getTier(user)}
                     onLeadClick={handleLeadClick}
                     onRefresh={() => refreshDashboardData(false)}
                 />
-                <LeadList 
-                    title="Today's Enquiry Status" data={statusLeads} icon={<AlertCircle className="text-red-600"/>} color="bg-red-50" badgeColor="bg-red-600"
+                <LeadList
+                    title="Today's Enquiry Status" data={statusLeads} icon={<AlertCircle className="text-red-600" />} color="bg-red-50" badgeColor="bg-red-600"
                     currentPage={statusPage} setCurrentPage={setStatusPage} pageSize={statusLimit} setPageSize={setStatusLimit} userTier={getTier(user)}
                     showRemarks={true}
                     onLeadClick={handleLeadClick}
@@ -422,26 +426,26 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
     const [showAllRows, setShowAllRows] = useState(false);
 
     const safeData = Array.isArray(data) ? data : [];
-const q = searchTerm.trim().toLowerCase();
-const filteredData = safeData.filter((lead) => {
-    const searchable = [
-        lead?.student_name,
-        lead?.email,
-        lead?.phone,
-        lead?.lead_code,
-        lead?.status,
-        lead?.domain,
-        lead?.assigned_to_name,
-        lead?.assigned_by_name
-    ]
-        .map(v => String(v || "").toLowerCase())
-        .join(" ");
+    const q = searchTerm.trim().toLowerCase();
+    const filteredData = safeData.filter((lead) => {
+        const searchable = [
+            lead?.student_name,
+            lead?.email,
+            lead?.phone,
+            lead?.lead_code,
+            lead?.status,
+            lead?.domain,
+            lead?.assigned_to_name,
+            lead?.assigned_by_name
+        ]
+            .map(v => String(v || "").toLowerCase())
+            .join(" ");
 
-    return searchable.includes(q);
-});
+        return searchable.includes(q);
+    });
 
-console.log("Leads Data:", safeData);
-console.log("Search:", searchTerm);
+    console.log("Leads Data:", safeData);
+    console.log("Search:", searchTerm);
 
     const totalPages = Math.max(Math.ceil(filteredData.length / pageSize), 1);
     const paginatedData = showAllRows
@@ -487,7 +491,7 @@ console.log("Search:", searchTerm);
                     </div>
                 </div>
                 <div className="relative">
-                    <input 
+                    <input
                         type="text"
                         placeholder="Search leads..."
                         value={searchTerm}
@@ -498,11 +502,11 @@ console.log("Search:", searchTerm);
                         className="w-full pl-9 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-red-500/20 transition-all shadow-sm"
                     />
                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
                     </div>
                 </div>
             </div>
-            
+
             {/* Table Body */}
             <div
                 className={`flex-grow overflow-x-auto min-h-[350px] ${enableVerticalScroll ? 'max-h-[350px] overflow-y-auto' : ''}`}
@@ -535,7 +539,7 @@ console.log("Search:", searchTerm);
 
                                 {/* Email & Phone Cell */}
                                 <td className="py-3 px-4">
-                                    
+
                                     <div className="flex flex-col gap-0.5">
                                         <div className="flex items-center gap-1.5 text-slate-500">
                                             <span className="text-[11px] font-medium truncate max-w-[150px]">{lead.email || '—'}</span>

@@ -28,11 +28,19 @@ const UserManagement = ({ user }) => {
   const [selectedUserIds, setSelectedUserIds] = useState([]);
 
   const [editFormData, setEditFormData] = useState({});
+  const editRowRef = useRef(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [userHistory, setUserHistory] = useState([]);
   const [historyUserName, setHistoryUserName] = useState("");
   const [formData, setFormData] = useState({
-    name: "", email: "", phone: "", domain: "", role: "Staff", designation: "", password: "",
+    employee_id: "",
+    name: "",
+    email: "",
+    phone: "",
+    domain: "",
+    role: "Staff",
+    designation: "",
+    password: "",
   });
   const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
 
@@ -68,6 +76,7 @@ const UserManagement = ({ user }) => {
   const filteredStaff = staff.filter(user =>
     (
       (user.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(user.employee_id || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.domain || "").toLowerCase().includes(searchTerm.toLowerCase())
     ) &&
@@ -93,7 +102,13 @@ const UserManagement = ({ user }) => {
     visibleUserIds.length > 0 && visibleUserIds.every((id) => selectedUserSet.has(id));
 
   useEffect(() => {
-    setSelectedUserIds((prev) => prev.filter((id) => visibleUserIds.includes(id)));
+    setSelectedUserIds((prev) => {
+      const next = prev.filter((id) => visibleUserIds.includes(id));
+      if (next.length === prev.length && next.every((id, idx) => id === prev[idx])) {
+        return prev;
+      }
+      return next;
+    });
   }, [visibleUserIds]);
 
   const toggleSelectUser = (id) => {
@@ -133,9 +148,17 @@ const UserManagement = ({ user }) => {
       setItemsPerPage(Math.max(filteredStaff.length, 1));
     }
   }, [filteredStaff.length, itemsPerPageValue]);
+  useEffect(() => {
+    if (!editingId) return;
+    const node = editRowRef.current;
+    if (node && typeof node.scrollIntoView === "function") {
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [editingId]);
 
   // --- API HANDLERS (handleAddUser, handleDelete, handleSaveEdit remain same) ---
   const validate = (data, isNewUser = false) => {
+    if (!data.employee_id || !String(data.employee_id).trim()) return "Employee ID is required";
     if (!data.name || data.name.length < 3) return "Name must be 3+ chars";
     if (!/^\S+@\S+\.\S+$/.test(data.email)) return "Invalid email";
     if (isNewUser && (!data.password || data.password.length < 6)) return "Password must be 6+ chars";
@@ -160,7 +183,7 @@ const UserManagement = ({ user }) => {
       });
       if (res.ok) {
         toast.success("Account created!", { id: loadToast });
-        setFormData({ name: "", email: "", phone: "", domain: "", role: "Staff", designation: "", password: "" });
+        setFormData({ employee_id: "", name: "", email: "", phone: "", domain: "", role: "Staff", designation: "", password: "" });
         fetchData();
       } else {
         const errData = await res.json();
@@ -228,7 +251,7 @@ const UserManagement = ({ user }) => {
     const confirmed = await confirmToast("Export current table to CSV?", "Export");
     if (!confirmed) return;
     const columns = [
-      { header: "User ID", accessor: (u) => u.id },
+      { header: "Employee ID", accessor: (u) => u.employee_id || "" },
       { header: "User Name", accessor: (u) => u.name || "" },
       { header: "Role", accessor: (u) => u.role || "" },
       { header: "Designation", accessor: (u) => u.designation || "" },
@@ -332,7 +355,7 @@ const UserManagement = ({ user }) => {
 
   return (
   
- <div className="p-6 bg-gradient-to-b from-slate-50 to-slate-100 min-h-screen space-y-8">
+ <div className=" min-h-screen space-y-8">
 
   {/* STAFF ONBOARDING */}
   <div className="bg-white p-8 rounded-3xl shadow-md border border-slate-200">
@@ -364,6 +387,22 @@ const UserManagement = ({ user }) => {
           value={formData.name}
           onChange={(e) =>
             setFormData({ ...formData, name: e.target.value })
+          }
+        />
+      </div>
+
+      {/* EMPLOYEE ID */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] font-bold uppercase text-slate-400">
+          Employee ID
+        </label>
+        <input
+          className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          placeholder="Employee ID"
+          required
+          value={formData.employee_id}
+          onChange={(e) =>
+            setFormData({ ...formData, employee_id: e.target.value })
           }
         />
       </div>
@@ -600,7 +639,7 @@ const UserManagement = ({ user }) => {
                     aria-label="Select all users"
                   />
                 </th>
-                <th className="p-4">User ID</th>
+                <th className="p-4">Employee ID</th>
 
                 <th className="p-4">User Name</th>
                 <th className="p-4">Role / Domain</th>
@@ -612,7 +651,11 @@ const UserManagement = ({ user }) => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {currentItems.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+                <tr
+                  key={user.id}
+                  ref={editingId === user.id ? editRowRef : null}
+                  className="hover:bg-slate-50/50 transition-colors"
+                >
                   <td className="p-4">
                     <input
                       type="checkbox"
@@ -698,9 +741,9 @@ const UserManagement = ({ user }) => {
 
 const DisplayRow = ({ user, setEditingId, setEditFormData, handleDelete, fetchUserHistory, handleToggleStatus }) => (
   <>
-    <td className="p-4 font-bold text-slate-700">{user.id}</td>
+    <td className="p-4 font-bold text-slate-700">{user.employee_id || "-"}</td>
     <td className="p-4 font-bold text-slate-700">{user.name}</td>
-    <td className="p-4">
+    <td className="p-4 min-w-0">
       <div className="flex flex-col gap-1.5">
         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 uppercase w-fit">{user.role}</span>
         {user.designation && <span className="text-slate-500 text-[11px] font-semibold">{user.designation}</span>}
@@ -723,9 +766,7 @@ const DisplayRow = ({ user, setEditingId, setEditFormData, handleDelete, fetchUs
     </td>
     <td className="p-4 text-center">
       <div className="inline-flex items-center gap-2">
-        <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${Number(user.is_active) === 1 ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
-          {Number(user.is_active) === 1 ? "Active" : "Inactive"}
-        </span>
+       
         <button
           type="button"
           onClick={() => handleToggleStatus(user)}
@@ -761,8 +802,15 @@ const DisplayRow = ({ user, setEditingId, setEditFormData, handleDelete, fetchUs
 
 const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy, handleSaveEdit, setEditingId, user }) => (
   <>
-    {/* User ID */}
-    <td className="p-4 font-bold text-slate-700">{user.id}</td>
+    {/* Employee ID */}
+    <td className="p-4">
+      <input
+        className="w-full border p-2 rounded-lg text-sm"
+        placeholder="Employee ID"
+        value={editFormData.employee_id || ""}
+        onChange={(e) => setEditFormData({ ...editFormData, employee_id: e.target.value })}
+      />
+    </td>
 
     {/* Name & Email Column */}
     <td className="p-4 space-y-2">
@@ -828,6 +876,7 @@ const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy,
           domain: val,
         })
       }
+      className="max-w-[240px]"
     />
   )}
 </div>

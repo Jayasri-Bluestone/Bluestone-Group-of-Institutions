@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Mail, Phone, ChevronLeft, ChevronRight, UserMinus, CheckCircle, AlertCircle, Clock } from 'lucide-react';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 
 import { API_BASE_URL } from '../../apiConfig';
 import { confirmToast } from '../../utils/toastConfirm';

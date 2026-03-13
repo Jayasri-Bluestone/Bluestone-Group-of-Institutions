@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
-import { Plus, Trash2, Database, CheckCircle, Edit3, X, Save } from 'lucide-react';
+import { Plus, Trash2, Database, CheckCircle, Edit3, X, Save, LayoutGrid, Users, Network } from 'lucide-react';
 import * as Fa6Icons from 'react-icons/fa6';
 import * as MdIcons from 'react-icons/md';
 import * as IoIcons from 'react-icons/io5';
@@ -10,6 +10,7 @@ import * as BiIcons from 'react-icons/bi';
 import { confirmToast } from '../../../utils/toastConfirm';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 import UserManagement from './UserManagement';
+import Pagination from '../Layout/Pagination';
 
 const ICON_PACKS = {
   fa6: Fa6Icons,
@@ -41,15 +42,19 @@ const getReactIconComponentByKey = (iconKey) => {
   return source[iconName] || Fa6Icons.FaLayerGroup;
 };
 
-const MasterManagement = () => {
+const MasterManagement = ({ user }) => {
   const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
   const [data, setData] = useState([]);
-  const [activeTab, setActiveTab] = useState('domain_setup');
+  const isSuperAdmin = user?.tier === 'SUPER_ADMIN' || ['Main Admin', 'MD', 'GM'].includes(user?.role);
+  const [activeTab, setActiveTab] = useState(() => (isSuperAdmin ? 'domain_setup' : 'user_management'));
   const [hierarchy, setHierarchy] = useState([]);
   const [newHierarchy, setNewHierarchy] = useState({ tier: 'ADMIN', role_name: '' });
   const [editingHierarchy, setEditingHierarchy] = useState(null);
   const [hierarchyPage, setHierarchyPage] = useState(1);
   const [hierarchyItemsPerPage, setHierarchyItemsPerPage] = useState(10);
+  const [domainPage, setDomainPage] = useState(1);
+  const [domainItemsPerPage, setDomainItemsPerPage] = useState(10);
+  const [domainItemsPerPageValue, setDomainItemsPerPageValue] = useState(10);
   
   const actualItemsPerPage = hierarchyItemsPerPage === 'all' ? Math.max(1, hierarchy.length) : hierarchyItemsPerPage;
   const totalHierarchyPages = Math.ceil(hierarchy.length / actualItemsPerPage);
@@ -57,9 +62,34 @@ const MasterManagement = () => {
     (hierarchyPage - 1) * actualItemsPerPage,
     hierarchyPage * actualItemsPerPage
   );
+  const sortedDomains = useMemo(() => {
+    return [...data].sort((a, b) => {
+      const aSeq = Number.isFinite(Number(a.sequence)) ? Number(a.sequence) : Number.POSITIVE_INFINITY;
+      const bSeq = Number.isFinite(Number(b.sequence)) ? Number(b.sequence) : Number.POSITIVE_INFINITY;
+      if (aSeq !== bSeq) return aSeq - bSeq;
+      const aName = String(a.name || '');
+      const bName = String(b.name || '');
+      return aName.localeCompare(bName);
+    });
+  }, [data]);
+  useEffect(() => {
+    if (!isSuperAdmin) {
+      setActiveTab('user_management');
+    }
+  }, [isSuperAdmin]);
+  const domainTotalPages = Math.max(Math.ceil(sortedDomains.length / domainItemsPerPage), 1);
+  const domainIndexOfLast = domainPage * domainItemsPerPage;
+  const domainIndexOfFirst = domainIndexOfLast - domainItemsPerPage;
+  const currentDomains = sortedDomains.slice(domainIndexOfFirst, domainIndexOfLast);
+  useEffect(() => {
+    if (domainItemsPerPageValue === 'all') {
+      setDomainItemsPerPage(Math.max(sortedDomains.length, 1));
+    }
+  }, [sortedDomains.length, domainItemsPerPageValue]);
   
   // Create States
   const [newDomain, setNewDomain] = useState('');
+  const [newDomainSequence, setNewDomainSequence] = useState('');
   const [newDomainIconType, setNewDomainIconType] = useState('default');
   const [newDomainIconName, setNewDomainIconName] = useState(DEFAULT_ICON_KEY);
   const [iconSearch, setIconSearch] = useState('');
@@ -70,10 +100,25 @@ const MasterManagement = () => {
   
   // Custom dropdown states for sub-values
   const [openSubValuesCatId, setOpenSubValuesCatId] = useState(null);
+  const [selectedCategoryByDomain, setSelectedCategoryByDomain] = useState({});
+  const [selectedValueByDomain, setSelectedValueByDomain] = useState({});
+  const [showAddCategoryByDomain, setShowAddCategoryByDomain] = useState({});
+  const [showAddValueByDomain, setShowAddValueByDomain] = useState({});
+  const [newCategoryByDomain, setNewCategoryByDomain] = useState({});
+  const [newValueByDomain, setNewValueByDomain] = useState({});
 
   // Edit States
   const [editingItem, setEditingItem] = useState(EMPTY_EDITING_ITEM);
   const [editIconSearch, setEditIconSearch] = useState('');
+  const [domainEditModal, setDomainEditModal] = useState({
+    isOpen: false,
+    id: null,
+    name: '',
+    sequence: '',
+    icon_type: 'default',
+    icon_name: DEFAULT_ICON_KEY,
+    logo_url: '',
+  });
 
   const allIconOptions = useMemo(() => {
     return Object.entries(ICON_PACKS).flatMap(([pack, icons]) =>
@@ -233,6 +278,7 @@ const MasterManagement = () => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify({
           name: newDomain,
+          sequence: newDomainSequence !== '' ? Number(newDomainSequence) : null,
           icon_type: newDomainIconType,
           icon_name: newDomainIconType === 'react_icon' ? newDomainIconName : null,
           logo_url: newDomainIconType === 'logo' ? newDomainLogo : null
@@ -245,6 +291,7 @@ const MasterManagement = () => {
       setNewDomainIconName(DEFAULT_ICON_KEY);
       setIconSearch('');
       setNewDomainLogo('');
+      setNewDomainSequence('');
       fetchAll();
     } catch {
       toast.error("Failed to add domain", { id: tid });
@@ -419,6 +466,93 @@ const MasterManagement = () => {
       toast.error("Update failed", { id: tid });
     }
   };
+  const openDomainEditModal = (domain) => {
+    setEditIconSearch('');
+    setDomainEditModal({
+      isOpen: true,
+      id: domain.id,
+      name: domain.name || '',
+      sequence: domain.sequence ?? '',
+      icon_type: domain.icon_type || 'default',
+      icon_name: domain.icon_name || DEFAULT_ICON_KEY,
+      logo_url: domain.logo_url || '',
+    });
+  };
+  const closeDomainEditModal = () => {
+    setDomainEditModal({
+      isOpen: false,
+      id: null,
+      name: '',
+      sequence: '',
+      icon_type: 'default',
+      icon_name: DEFAULT_ICON_KEY,
+      logo_url: '',
+    });
+    setEditIconSearch('');
+  };
+  const saveDomainEdit = async () => {
+    if (!domainEditModal.id || !domainEditModal.name.trim()) return;
+    const payload = {
+      name: domainEditModal.name.trim(),
+      sequence: domainEditModal.sequence !== '' ? Number(domainEditModal.sequence) : null,
+      icon_type: domainEditModal.icon_type || 'default',
+      icon_name: domainEditModal.icon_type === 'react_icon' ? (domainEditModal.icon_name || DEFAULT_ICON_KEY) : null,
+      logo_url: domainEditModal.icon_type === 'logo' ? (domainEditModal.logo_url || null) : null,
+    };
+    const tid = toast.loading("Saving domain...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/domains/${domainEditModal.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Domain updated", { id: tid });
+      closeDomainEditModal();
+      fetchAll();
+    } catch {
+      toast.error("Update failed", { id: tid });
+    }
+  };
+  const addCategoryForDomain = async (domainId) => {
+    const name = String(newCategoryByDomain[domainId] || '').trim();
+    if (!domainId || !name) return;
+    const tid = toast.loading("Adding category...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify({ domain_id: domainId, name })
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Category added", { id: tid });
+      setNewCategoryByDomain((prev) => ({ ...prev, [domainId]: '' }));
+      setShowAddCategoryByDomain((prev) => ({ ...prev, [domainId]: false }));
+      fetchAll();
+    } catch {
+      toast.error("Failed to add category", { id: tid });
+    }
+  };
+  const addValueForCategory = async (domainId) => {
+    const catId = selectedCategoryByDomain[domainId];
+    const value = String(newValueByDomain[domainId] || '').trim();
+    if (!catId || !value) return;
+    const tid = toast.loading("Adding value...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/values`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify({ category_id: catId, value })
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Value added", { id: tid });
+      setNewValueByDomain((prev) => ({ ...prev, [domainId]: '' }));
+      setShowAddValueByDomain((prev) => ({ ...prev, [domainId]: false }));
+      fetchAll();
+    } catch {
+      toast.error("Failed to add value", { id: tid });
+    }
+  };
 
   // --- DELETE ACTIONS ---
   const handleDelete = async (type, id) => {
@@ -466,53 +600,54 @@ const MasterManagement = () => {
   }, [allIconOptions, editIconSearch]);
 
   return (
-    <div className="p-8 space-y-10 bg-slate-50 min-h-screen font-sans">
-      <header className="flex items-center gap-3">
+    <div className="space-y-10 rounded-2xl font-sans">
+       {/* <header className="flex items-center gap-3">
         <div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200">
           <Database size={24}/>
         </div>
         <div>
           <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Master Setup</h1>
         </div>
-      </header>
+      </header> */}
 
-      <div className="bg-white p-2 rounded-xl border border-slate-200 inline-flex gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('domain_setup')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide ${
-            activeTab === 'domain_setup' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          Domain Setup
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('user_management')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide ${
-            activeTab === 'user_management' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          User Management
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('content_images')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide ${
-            activeTab === 'content_images' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          Content & Images
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('user_hierarchy')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide ${
-            activeTab === 'user_hierarchy' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          User Hierarchy
-        </button>
+      <div className="flex border-b border-slate-100">
+        <div className="flex gap-8">
+          {[
+            isSuperAdmin ? { id: 'domain_setup', label: 'Domain Setup', icon: LayoutGrid, activeColor: 'text-blue-600' } : null,
+            { id: 'user_management', label: 'User Management', icon: Users, activeColor: 'text-indigo-600' },
+            isSuperAdmin ? { id: 'user_hierarchy', label: 'User Hierarchy', icon: Network, activeColor: 'text-blue-600' } : null,
+          ].filter(Boolean).map((tab) => {
+            const isActive = activeTab === tab.id;
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`group relative flex items-center gap-2 py-2 px-1 transition-all duration-300 ${
+                  isActive ? tab.activeColor : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <div className={`p-2 rounded-lg transition-all duration-500 ${
+                  isActive ? 'bg-white shadow-sm scale-110' : 'group-hover:bg-slate-50'
+                }`}>
+                  <Icon size={18} className={`transition-transform duration-500 ${isActive ? 'rotate-0' : 'group-hover:scale-110'}`} />
+                </div>
+                <span className={`text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 ${isActive ? 'opacity-100 translate-x-0'  : 'opacity-70 group-hover:opacity-100'}`}>
+                  {tab.label}
+                </span>
+
+                {/* Active Indicator & Glow */}
+                {isActive && (
+                  <>
+                    <div className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full ${isActive ? 'bg-current' : ''} ${tab.glow} z-20`} />
+                    <div className="absolute inset-0 bg-gradient-to-t from-current/5 to-transparent pointer-events-none rounded-t-2xl opacity-50" />
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {activeTab === 'domain_setup' && (
@@ -523,6 +658,14 @@ const MasterManagement = () => {
           <label className="text-[10px] font-black uppercase text-blue-600 mb-2 block">Step 1: Domain</label>
           <div className="space-y-2">
             <input className="flex-1 p-2 border rounded-lg text-sm" placeholder="e.g. Overseas" value={newDomain} onChange={e=>setNewDomain(e.target.value)}/>
+            <input
+              className="flex-1 p-2 border rounded-lg text-sm"
+              type="number"
+              min="1"
+              placeholder="Sequence (e.g. 1)"
+              value={newDomainSequence}
+              onChange={(e) => setNewDomainSequence(e.target.value)}
+            />
             <select
               className="w-full p-2 border rounded-lg bg-slate-50 text-sm"
               value={newDomainIconType}
@@ -590,7 +733,7 @@ const MasterManagement = () => {
           <div className="space-y-2">
             <select className="w-full p-2 border rounded-lg bg-slate-50 text-sm" onChange={e=>setNewCat({...newCat, domainId: e.target.value})}>
               <option>Select Domain</option>
-              {data.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              {sortedDomains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             <div className="flex gap-2">
               <input className="flex-1 p-2 border rounded-lg text-sm" placeholder="e.g. Test Prep" value={newCat.name} onChange={e=>setNewCat({...newCat, name: e.target.value})}/>
@@ -622,7 +765,7 @@ const MasterManagement = () => {
           <div className="space-y-2">
             <select className="w-full p-2 border rounded-lg bg-slate-50 text-sm" onChange={e=>setSelection({...selection, catId: e.target.value})}>
               <option>Select Category</option>
-              {data.flatMap(d => d.categories || []).map(c => (
+              {sortedDomains.flatMap(d => d.categories || []).map(c => (
                 <option key={c.id} value={c.id}>{c.domain_name} → {c.category_name}</option>
               ))}
             </select>
@@ -640,197 +783,293 @@ const MasterManagement = () => {
           <span>Live Master Structure</span>
           <span className="text-slate-400">MD/GM Access Only</span>
         </div>
-        
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {data.map(domain => (
-            <div key={domain.id} className="space-y-4 bg-red-50/50 p-5 rounded-2xl border border-slate-100 hover:border-blue-200">
-              
-              {/* DOMAIN HEADER */}
-              <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-                {editingItem.type === 'domains' && editingItem.id === domain.id ? (
-                  <div className="w-full space-y-2">
-                    <input
-                      autoFocus
-                      className="text-xs p-1 border rounded w-full"
-                      value={editingItem.value}
-                      onChange={e=>setEditingItem({...editingItem, value: e.target.value})}
-                    />
-
-                    <select
-                      className="w-full p-1 border rounded bg-slate-50 text-xs"
-                      value={editingItem.icon_type}
-                      onChange={(e) =>
-                        setEditingItem((prev) => ({ ...prev, icon_type: e.target.value }))
-                      }
-                    >
-                      <option value="default">Default Icon</option>
-                      <option value="react_icon">React Icon</option>
-                      <option value="logo">Upload Logo</option>
-                    </select>
-
-                    {editingItem.icon_type === 'react_icon' && (
-                      <div className="space-y-1">
-                        <input
-                          type="text"
-                          className="w-full p-1 border rounded bg-slate-50 text-xs"
-                          placeholder="Search icons"
-                          value={editIconSearch}
-                          onChange={(e) => setEditIconSearch(e.target.value)}
-                        />
-                        <div className="max-h-28 overflow-y-auto border rounded bg-slate-50 p-1 grid grid-cols-7 gap-1">
-                          {filteredEditIconOptions.map((opt) => {
-                            const IconComp = opt.component;
-                            const selected = editingItem.icon_name === opt.key;
-                            return (
-                              <button
-                                key={opt.key}
-                                type="button"
-                                title={`${opt.pack}:${opt.label}`}
-                                onClick={() => setEditingItem((prev) => ({ ...prev, icon_name: opt.key }))}
-                                className={`h-7 w-7 rounded border flex items-center justify-center ${
-                                  selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'
-                                }`}
-                              >
-                                <IconComp size={13} />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {editingItem.icon_type === 'logo' && (
-                      <div className="space-y-1">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleEditLogoUpload}
-                          className="w-full p-1 border rounded bg-slate-50 text-xs"
-                        />
-                        {editingItem.logo_url && (
-                          <img
-                            src={editingItem.logo_url}
-                            alt="domain logo preview"
-                            className="w-6 h-6 rounded object-cover border border-slate-200"
-                          />
-                        )}
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={saveEdit} className="text-green-600"><Save size={14}/></button>
-                      <button onClick={() => { setEditingItem(EMPTY_EDITING_ITEM); setEditIconSearch(''); }} className="text-slate-400"><X size={14}/></button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 min-w-0">
+        <div className="p-4 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b">
+              <tr>
+                <th className="p-3 w-[6%]">#</th>
+                <th className="p-3 w-[8%]">Icon</th>
+                <th className="p-3 w-[20%]">Domain</th>
+                <th className="p-3 w-[26%]">Categories</th>
+                <th className="p-3 w-[26%]">Sub-Values</th>
+                <th className="p-3 w-[14%] text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {currentDomains.map((domain, idx) => {
+                const categories = domain.categories || [];
+                const selectedCatId = selectedCategoryByDomain[domain.id] || categories[0]?.id || '';
+                const selectedCategory = categories.find((c) => c.id === selectedCatId);
+                const values = selectedCategory?.values || [];
+                const selectedValueId = selectedValueByDomain[domain.id] || values[0]?.id || '';
+                const selectedValue = values.find((v) => v.id === selectedValueId);
+                const sequenceDisplay = Number.isFinite(Number(domain.sequence)) ? Number(domain.sequence) : (domainIndexOfFirst + idx + 1);
+                return (
+                  <tr key={domain.id} className="align-top">
+                    <td className="p-3 text-xs font-bold text-slate-500">{sequenceDisplay}</td>
+                    <td className="p-3">
                       {domain.icon_type === 'logo' && domain.logo_url ? (
                         <img
                           src={domain.logo_url}
                           alt={domain.name}
-                          className="w-5 h-5 rounded object-cover border border-slate-200"
+                          className="w-7 h-7 rounded object-cover border border-slate-200"
                         />
                       ) : domain.icon_type === 'react_icon' ? (
-                        React.createElement(getReactIconComponentByKey(domain.icon_name), { className: 'w-4 h-4 text-slate-600 shrink-0' })
+                        React.createElement(getReactIconComponentByKey(domain.icon_name), { className: 'w-5 h-5 text-slate-600' })
                       ) : (
-                        <Fa6Icons.FaLayerGroup className="w-4 h-4 text-slate-600 shrink-0" />
+                        <Fa6Icons.FaLayerGroup className="w-5 h-5 text-slate-600" />
                       )}
-                      <h3 className="font-black text-slate-800 uppercase text-xs truncate">{domain.name}</h3>
-                    </div>
-                    <div className="flex gap-2 opacity-100 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() =>
-                          startEdit('domains', domain.id, domain.name, {
-                            icon_type: domain.icon_type || 'default',
-                            icon_name: domain.icon_name || DEFAULT_ICON_KEY,
-                            logo_url: domain.logo_url || '',
-                          })
-                        }
-                        className="text-blue-400 hover:text-blue-600"
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                      <button onClick={() => handleDelete('domains', domain.id)} className="text-red-400 hover:text-red-500"><Trash2 size={14} /></button>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* CATEGORIES */}
-              {domain.categories?.map(cat => (
-                <div key={cat.id} className="pl-2 space-y-2 border-l-2 border-slate-200">
-                  <div className="flex justify-between items-center group">
-                    {editingItem.type === 'categories' && editingItem.id === cat.id ? (
-                       <div className="flex gap-1 items-center w-full bg-white p-1 rounded shadow-sm">
-                          <input autoFocus className="text-[10px] p-1 border-none outline-none w-full font-bold uppercase" value={editingItem.value} onChange={e=>setEditingItem({...editingItem, value: e.target.value})}/>
-                          <button onClick={saveEdit} className="text-green-600"><Save size={12}/></button>
-                       </div>
-                    ) : (
-                      <>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat.category_name}</span>
-                        <div className="flex gap-1">
-                          <button onClick={() => startEdit('categories', cat.id, cat.category_name)} className="text-slate-300 hover:text-blue-500"><Edit3 size={10} /></button>
-                          <button onClick={() => handleDelete('categories', cat.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={10} /></button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  
-                  {/* SUB-VALUES (Dropdown Toggle) */}
-                  <div className="mt-2">
-                    {cat.values && cat.values.length > 0 ? (
-                      <div className="relative">
-                        <button 
-                          onClick={() => setOpenSubValuesCatId(openSubValuesCatId === cat.id ? null : cat.id)}
-                          className="text-[10px] font-bold uppercase flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100 hover:bg-blue-100 transition-colors"
-                        >
-                          {cat.values.length} Sub-Values {openSubValuesCatId === cat.id ? '▲' : '▼'}
-                        </button>
-                        
-                        {/* Dropdown Content */}
-                        {openSubValuesCatId === cat.id && (
-                          <div className="absolute z-10 top-full left-0 mt-1 w-64 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded shadow-lg p-2 flex flex-col gap-1">
-                            {cat.values.map(val => (
-                              <div key={val.id} className="group relative flex justify-between items-center px-2 py-1 hover:bg-slate-50 rounded">
-                                {editingItem.type === 'values' && editingItem.id === val.id ? (
-                                  <input 
-                                    autoFocus 
-                                    className="text-[10px] w-full p-0.5 border rounded bg-white" 
-                                    value={editingItem.value} 
-                                    onBlur={saveEdit}
-                                    onKeyDown={e => e.key === 'Enter' && saveEdit()}
-                                    onChange={e=>setEditingItem({...editingItem, value: e.target.value})}
-                                  />
-                                ) : (
-                                  <>
-                                    <span className="text-[10px] text-slate-700 font-medium truncate pr-2">
-                                      {val.sub_value}
-                                    </span>
-                                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-50 pl-2">
-                                      <button onClick={() => startEdit('values', val.id, val.sub_value)} className="text-blue-400 hover:text-blue-600">
-                                        <Edit3 size={10} />
-                                      </button>
-                                      <button onClick={() => handleDelete('values', val.id)} className="text-slate-400 hover:text-red-500 font-bold">
-                                        ×
-                                      </button>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
+                    </td>
+                    <td className="p-3">
+                      <div className="font-black text-slate-800 uppercase text-xs truncate">{domain.name}</div>
+                      <div className="text-[10px] text-slate-400 uppercase tracking-widest">Domain</div>
+                    </td>
+                    <td className="p-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="w-full p-2 border rounded-lg bg-slate-50 text-xs"
+                            value={selectedCatId}
+                            onChange={(e) =>
+                              setSelectedCategoryByDomain((prev) => ({ ...prev, [domain.id]: Number(e.target.value) || '' }))
+                            }
+                          >
+                            <option value="">Select Category</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>{c.category_name}</option>
                             ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => selectedCategory && startEdit('categories', selectedCategory.id, selectedCategory.category_name)}
+                            className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-100"
+                            title="Edit selected category"
+                            disabled={!selectedCategory}
+                          >
+                            <Edit3 size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectedCategory && handleDelete('categories', selectedCategory.id)}
+                            className="p-2 rounded-lg bg-red-50 text-red-600 border border-red-100"
+                            title="Delete selected category"
+                            disabled={!selectedCategory}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        {editingItem.type === 'categories' && editingItem.id === selectedCatId && (
+                          <div className="flex gap-2">
+                            <input
+                              autoFocus
+                              className="flex-1 p-2 border rounded-lg text-xs"
+                              value={editingItem.value}
+                              onChange={(e) => setEditingItem((prev) => ({ ...prev, value: e.target.value }))}
+                              onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
+                            />
+                            <button
+                              type="button"
+                              onClick={saveEdit}
+                              className="p-2 rounded-lg bg-emerald-600 text-white"
+                              title="Save"
+                            >
+                              <Save size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingItem(EMPTY_EDITING_ITEM)}
+                              className="p-2 rounded-lg bg-slate-200 text-slate-600"
+                              title="Cancel"
+                            >
+                              <X size={12} />
+                            </button>
                           </div>
                         )}
+                        {showAddCategoryByDomain[domain.id] ? (
+                          <div className="flex gap-2">
+                            <input
+                              className="flex-1 p-2 border rounded-lg text-xs"
+                              placeholder="New category"
+                              value={newCategoryByDomain[domain.id] || ''}
+                              onChange={(e) =>
+                                setNewCategoryByDomain((prev) => ({ ...prev, [domain.id]: e.target.value }))
+                              }
+                            />
+                            <button
+                              type="button"
+                              onClick={() => addCategoryForDomain(domain.id)}
+                              className="p-2 rounded-lg bg-blue-600 text-white"
+                              title="Add category"
+                            >
+                              <CheckCircle size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowAddCategoryByDomain((prev) => ({ ...prev, [domain.id]: false }))}
+                              className="p-2 rounded-lg bg-slate-200 text-slate-600"
+                              title="Cancel"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowAddCategoryByDomain((prev) => ({ ...prev, [domain.id]: true }))}
+                            className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit"
+                          >
+                            Add Category
+                          </button>
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-[9px] text-slate-400 italic">No sub-values</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+                    </td>
+                    <td className="p-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="w-full p-2 border rounded-lg bg-slate-50 text-xs"
+                            value={selectedValueId}
+                            onChange={(e) =>
+                              setSelectedValueByDomain((prev) => ({ ...prev, [domain.id]: Number(e.target.value) || '' }))
+                            }
+                            disabled={!selectedCatId}
+                          >
+                            <option value="">{selectedCatId ? "Select Sub-Value" : "Select Category first"}</option>
+                            {values.map((v) => (
+                              <option key={v.id} value={v.id}>{v.sub_value}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => selectedValue && startEdit('values', selectedValue.id, selectedValue.sub_value)}
+                            className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-100"
+                            title="Edit selected sub-value"
+                            disabled={!selectedValue}
+                          >
+                            <Edit3 size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectedValue && handleDelete('values', selectedValue.id)}
+                            className="p-2 rounded-lg bg-red-50 text-red-600 border border-red-100"
+                            title="Delete selected sub-value"
+                            disabled={!selectedValue}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        {editingItem.type === 'values' && editingItem.id === selectedValueId && (
+                          <div className="flex gap-2">
+                            <input
+                              autoFocus
+                              className="flex-1 p-2 border rounded-lg text-xs"
+                              value={editingItem.value}
+                              onChange={(e) => setEditingItem((prev) => ({ ...prev, value: e.target.value }))}
+                              onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
+                            />
+                            <button
+                              type="button"
+                              onClick={saveEdit}
+                              className="p-2 rounded-lg bg-emerald-600 text-white"
+                              title="Save"
+                            >
+                              <Save size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingItem(EMPTY_EDITING_ITEM)}
+                              className="p-2 rounded-lg bg-slate-200 text-slate-600"
+                              title="Cancel"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        )}
+                        {showAddValueByDomain[domain.id] ? (
+                          <div className="flex gap-2">
+                            <input
+                              className="flex-1 p-2 border rounded-lg text-xs"
+                              placeholder="New sub-value"
+                              value={newValueByDomain[domain.id] || ''}
+                              onChange={(e) =>
+                                setNewValueByDomain((prev) => ({ ...prev, [domain.id]: e.target.value }))
+                              }
+                            />
+                            <button
+                              type="button"
+                              onClick={() => addValueForCategory(domain.id)}
+                              className="p-2 rounded-lg bg-emerald-600 text-white"
+                              title="Add sub-value"
+                              disabled={!selectedCatId}
+                            >
+                              <CheckCircle size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowAddValueByDomain((prev) => ({ ...prev, [domain.id]: false }))}
+                              className="p-2 rounded-lg bg-slate-200 text-slate-600"
+                              title="Cancel"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowAddValueByDomain((prev) => ({ ...prev, [domain.id]: true }))}
+                            className="text-[10px] font-bold uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100 w-fit"
+                            disabled={!selectedCatId}
+                          >
+                            Add Sub-Value
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openDomainEditModal(domain)}
+                          className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-100"
+                          title="Edit domain"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete('domains', domain.id)}
+                          className="p-2 rounded-lg bg-red-50 text-red-600 border border-red-100"
+                          title="Delete domain"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+        <Pagination
+          stats={{ currentPage: domainPage, totalPages: domainTotalPages }}
+          onPageChange={(newPage) => setDomainPage(newPage)}
+          pageSize={domainItemsPerPage}
+          pageSizeValue={domainItemsPerPageValue}
+          onPageSizeChange={(value) => {
+            if (value === 'all') {
+              setDomainItemsPerPageValue('all');
+              setDomainItemsPerPage(Math.max(sortedDomains.length, 1));
+              setDomainPage(1);
+              return;
+            }
+            const numeric = Number(value);
+            setDomainItemsPerPageValue(numeric);
+            setDomainItemsPerPage(numeric);
+            setDomainPage(1);
+          }}
+          pageSizeOptions={[10, 20, 50, 100, 'all']}
+        />
       </div>
       </>
       )}
@@ -1010,6 +1249,128 @@ const MasterManagement = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {domainEditModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[999] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
+            <div className="p-5 border-b flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="font-black text-slate-800 text-lg">EDIT DOMAIN</h3>
+                <p className="text-[10px] text-slate-400 uppercase tracking-widest">Update master domain</p>
+              </div>
+              <button onClick={closeDomainEditModal} className="bg-slate-200 hover:bg-slate-300 p-1 rounded-full transition-colors">
+                <X size={18} className="text-slate-600" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase">Domain Name</label>
+                <input
+                  className="w-full p-2 border rounded-lg text-sm"
+                  value={domainEditModal.name}
+                  onChange={(e) => setDomainEditModal((prev) => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase">Sequence</label>
+                <input
+                  className="w-full p-2 border rounded-lg text-sm"
+                  type="number"
+                  min="1"
+                  value={domainEditModal.sequence}
+                  onChange={(e) => setDomainEditModal((prev) => ({ ...prev, sequence: e.target.value }))}
+                  placeholder="e.g. 1"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase">Icon Type</label>
+                <select
+                  className="w-full p-2 border rounded-lg bg-slate-50 text-sm"
+                  value={domainEditModal.icon_type}
+                  onChange={(e) => setDomainEditModal((prev) => ({ ...prev, icon_type: e.target.value }))}
+                >
+                  <option value="default">Default Icon</option>
+                  <option value="react_icon">React Icon</option>
+                  <option value="logo">Upload Logo</option>
+                </select>
+              </div>
+              {domainEditModal.icon_type === 'react_icon' && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    className="w-full p-2 border rounded-lg bg-slate-50 text-sm"
+                    placeholder="Search icons"
+                    value={editIconSearch}
+                    onChange={(e) => setEditIconSearch(e.target.value)}
+                  />
+                  <div className="max-h-40 overflow-y-auto border rounded bg-slate-50 p-2 grid grid-cols-8 gap-1">
+                    {filteredEditIconOptions.map((opt) => {
+                      const IconComp = opt.component;
+                      const selected = domainEditModal.icon_name === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          title={`${opt.pack}:${opt.label}`}
+                          onClick={() => setDomainEditModal((prev) => ({ ...prev, icon_name: opt.key }))}
+                          className={`h-7 w-7 rounded border flex items-center justify-center ${
+                            selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          <IconComp size={13} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {domainEditModal.icon_type === 'logo' && (
+                <div className="space-y-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (!file.type.startsWith('image/')) {
+                        toast.error('Please upload an image file');
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setDomainEditModal((prev) => ({ ...prev, logo_url: String(reader.result || '') }));
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="w-full p-2 border rounded-lg bg-slate-50 text-sm"
+                  />
+                  {domainEditModal.logo_url && (
+                    <img
+                      src={domainEditModal.logo_url}
+                      alt="domain logo preview"
+                      className="w-10 h-10 rounded object-cover border border-slate-200"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
+              <button
+                onClick={closeDomainEditModal}
+                className="px-4 py-2 text-sm font-bold text-slate-600 bg-slate-200 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveDomainEdit}
+                className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg"
+              >
+                Save Changes
+              </button>
+            </div>
           </div>
         </div>
       )}

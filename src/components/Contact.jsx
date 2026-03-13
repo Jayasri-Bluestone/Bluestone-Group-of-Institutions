@@ -6,7 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { motion } from 'framer-motion';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 
 import { API_BASE_URL_PORTAL } from '../apiConfig';
 
@@ -128,32 +128,6 @@ export function Contact() {
 
   return (
     <section id="contact" className="py-24 bg-white relative overflow-hidden">
-      <Toaster 
-        position="top-center" 
-        toastOptions={{ 
-          duration: 2000,
-          success: {
-            style: {
-              background: '#16a34a', /* green-600 */
-              color: '#fff',
-            },
-            iconTheme: {
-              primary: '#fff',
-              secondary: '#16a34a',
-            },
-          },
-          error: {
-            style: {
-              background: '#dc2626', /* red-600 */
-              color: '#fff',
-            },
-            iconTheme: {
-              primary: '#fff',
-              secondary: '#dc2626',
-            },
-          },
-        }} 
-      />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}

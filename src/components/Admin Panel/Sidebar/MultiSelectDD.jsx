@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ChevronDown } from "lucide-react";
 
-const MultiDomainDropdown = ({ domains = [], value = "", onChange }) => {
+const MultiDomainDropdown = ({ domains = [], value = "", onChange, className = "" }) => {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef();
 
@@ -33,13 +33,13 @@ const MultiDomainDropdown = ({ domains = [], value = "", onChange }) => {
   }, []);
 
   return (
-    <div className="relative w-full" ref={dropdownRef}>
+    <div className={`relative w-full min-w-0 ${className}`} ref={dropdownRef}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex justify-between items-center border rounded-xl px-3 py-2 text-sm bg-white"
+        className="w-full min-w-0 flex justify-between items-center border rounded-xl px-3 py-2 text-sm bg-white"
       >
-        <span className="truncate">
+        <span className="truncate block min-w-0">
           {selected.length > 0 ? selected.join(", ") : "Select Domains"}
         </span>
 

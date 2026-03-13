@@ -64,18 +64,6 @@ function ScrollToTop() {
   return null;
 }
 
-const PortalShell = ({ user, onLogout, onUpdateUser }) => {
-  const location = useLocation();
-  return (
-    <Layout
-      key={location.pathname}
-      user={user}
-      onLogout={onLogout}
-      onUpdateUser={onUpdateUser}
-    />
-  );
-};
-
 // Domain Resolver for Portal
 const DomainResolver = ({ user }) => {
   const { slug } = useParams();
@@ -275,16 +263,7 @@ export default function App() {
 
         {/* --- 4. PORTAL CRM ROUTES (/portal/*) --- */}
         {auth.isAuthenticated ? (
-          <Route
-            path="/portal"
-            element={
-              <PortalShell
-                user={auth.user}
-                onLogout={handleLogout}
-                onUpdateUser={(u) => setAuth({ isAuthenticated: true, user: u })}
-              />
-            }
-          >
+          <Route path="/portal" element={<Layout user={auth.user} onLogout={handleLogout} />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard user={auth.user} />} />
             <Route
@@ -316,6 +295,12 @@ export default function App() {
               <>
                 <Route path="user-management" element={<UserManagement user={auth.user} />} />
                 <Route path="master" element={<MasterManagement user={auth.user} />} />
+              </>
+            )}
+            {getTier(auth.user) === 'ADMIN' && (
+              <>
+                <Route path="master" element={<MasterManagement user={auth.user} />} />
+                <Route path="user-management" element={<Navigate to="/portal/master" replace />} />
               </>
             )}
             <Route path="*" element={<Navigate to="dashboard" replace />} />
