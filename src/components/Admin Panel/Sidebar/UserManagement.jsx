@@ -9,7 +9,9 @@ import Pagination from "../Layout/Pagination";
 import { confirmToast } from "../../../utils/toastConfirm";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import MultiDomainDropdown from "./MultiSelectDD";
-import { exportToCsv } from "../../../utils/exportCsv";
+import { exportToExcel } from "../../../utils/exportExcel";
+import { RiDeleteBin4Fill } from "react-icons/ri";
+import { BiExport } from "react-icons/bi";
 
 
 const UserManagement = ({ user }) => {
@@ -247,8 +249,8 @@ const UserManagement = ({ user }) => {
     fetchData();
   };
 
-  const exportUsersCsv = async () => {
-    const confirmed = await confirmToast("Export current table to CSV?", "Export");
+  const exportUsersExcel = async () => {
+    const confirmed = await confirmToast("Export current table to Excel?", "Export");
     if (!confirmed) return;
     const columns = [
       { header: "Employee ID", accessor: (u) => u.employee_id || "" },
@@ -260,7 +262,7 @@ const UserManagement = ({ user }) => {
       { header: "Phone", accessor: (u) => u.phone || "" },
       { header: "Status", accessor: (u) => (Number(u.is_active) === 1 ? "Active" : "Inactive") },
     ];
-    await exportToCsv("staff-directory.csv", columns, currentItems);
+    await exportToExcel("staff-directory.xlsx", columns, currentItems);
   };
 
   const handleToggleStatus = async (user) => {
@@ -375,6 +377,39 @@ const UserManagement = ({ user }) => {
       onSubmit={handleAddUser}
       className="grid grid-cols-1 md:grid-cols-3 gap-4"
     >
+
+         {/* DOMAIN SELECT */}
+      <div className="md:col-span-3 space-y-2">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          Assign Domains
+        </label>
+
+        <div className="py-2  rounded-xl bg-slate-50">
+
+          {((roleHierarchy.find((r) => r.role_name === formData.role)?.tier || "") === "SUPER_ADMIN" ||
+            ["Main Admin", "MD", "GM"].includes(formData.role)) ? (
+
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 w-fit">
+              All Domains (Admin Access)
+            </div>
+
+          ) : (
+
+            <MultiDomainDropdown
+              domains={dynamicDomains}
+              value={formData.domain}
+              onChange={(val) =>
+                setFormData({
+                  ...formData,
+                  domain: val,
+                })
+              }
+            />
+
+          )}
+
+        </div>
+      </div>
       {/* NAME */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-bold uppercase text-slate-400">
@@ -490,7 +525,11 @@ const UserManagement = ({ user }) => {
         />
       </div>
 
-      {/* PASSWORD */}
+  
+
+   
+
+          {/* PASSWORD */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-bold uppercase text-slate-400">
           Password
@@ -508,39 +547,6 @@ const UserManagement = ({ user }) => {
             })
           }
         />
-      </div>
-
-      {/* DOMAIN SELECT */}
-      <div className="md:col-span-3 space-y-2">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-          Assign Domains
-        </label>
-
-        <div className="p-3 rounded-xl bg-slate-50">
-
-          {((roleHierarchy.find((r) => r.role_name === formData.role)?.tier || "") === "SUPER_ADMIN" ||
-            ["Main Admin", "MD", "GM"].includes(formData.role)) ? (
-
-            <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 w-fit">
-              All Domains (Admin Access)
-            </div>
-
-          ) : (
-
-            <MultiDomainDropdown
-              domains={dynamicDomains}
-              value={formData.domain}
-              onChange={(val) =>
-                setFormData({
-                  ...formData,
-                  domain: val,
-                })
-              }
-            />
-
-          )}
-
-        </div>
       </div>
 
       {/* SUBMIT BUTTON */}
@@ -586,18 +592,20 @@ const UserManagement = ({ user }) => {
               type="button"
               onClick={bulkDeleteUsers}
               disabled={selectedUserIds.length === 0}
-              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+              className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-red-600 text-white disabled:opacity-50"
               title="Delete selected users"
             >
-              Delete Selected ({selectedUserIds.length})
+           <RiDeleteBin4Fill/>
+              
+              {/* ({selectedUserIds.length}) */}
             </button>
             <button
               type="button"
-              onClick={exportUsersCsv}
-              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
-              title="Export CSV"
+              onClick={exportUsersExcel}
+              className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-slate-900 text-white"
+              title="Export Excel"
             >
-              Export CSV
+              <BiExport/>
             </button>
             <select
               value={statusFilter}

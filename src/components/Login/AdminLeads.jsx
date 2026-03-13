@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 
 import { API_BASE_URL } from '../../apiConfig';
 import { confirmToast } from '../../utils/toastConfirm';
-import { exportToCsv } from '../../utils/exportCsv';
+import { exportToExcel } from '../../utils/exportExcel';
 
 
 export function AdminLeads() {
@@ -168,8 +168,8 @@ export function AdminLeads() {
     setSelectedLeadIds([]);
   };
 
-  const exportLeadsCsv = async () => {
-    const confirmed = await confirmToast("Export current table to CSV?", "Export");
+  const exportLeadsExcel = async () => {
+    const confirmed = await confirmToast("Export current table to Excel?", "Export");
     if (!confirmed) return;
     const columns = [
       { header: "Date", accessor: (l) => formatDateTime(l.created_at).date },
@@ -179,7 +179,7 @@ export function AdminLeads() {
       { header: "Phone", accessor: (l) => l.phone || "" },
       { header: "Business Focus", accessor: (l) => l.business_focus || "" },
     ];
-    await exportToCsv("pending-enquiries.csv", columns, currentLeads);
+    await exportToExcel("pending-enquiries.xlsx", columns, currentLeads);
   };
 
   return (
@@ -223,10 +223,10 @@ export function AdminLeads() {
         </button>
         <button
           type="button"
-          onClick={exportLeadsCsv}
+          onClick={exportLeadsExcel}
           className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
         >
-          Export CSV
+          Export Excel
         </button>
       </div>
       <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">

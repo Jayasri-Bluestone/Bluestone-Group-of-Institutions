@@ -15,6 +15,8 @@ import {
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import Pagination from "./Pagination";
 import { exportToCsv } from "../../../utils/exportCsv";
+import { RiDeleteBin4Fill } from "react-icons/ri";
+import { BiExport } from "react-icons/bi";
 
 const LiveFeedManager = ({ user }) => {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -390,18 +392,19 @@ const LiveFeedManager = ({ user }) => {
               type="button"
               onClick={confirmBulkDelete}
               disabled={selectedNotificationIds.length === 0}
-              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+              className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-red-600 text-white disabled:opacity-50"
               title="Delete selected broadcasts"
             >
-              Delete Selected ({selectedNotificationIds.length})
+              <RiDeleteBin4Fill/>
+              {/* ({selectedNotificationIds.length}) */}
             </button>
             <button
               type="button"
               onClick={exportNotificationsCsv}
-              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
+              className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-slate-900 text-white"
               title="Export CSV"
             >
-              Export CSV
+<BiExport/>
             </button>
             <button
               onClick={fetchHistory}

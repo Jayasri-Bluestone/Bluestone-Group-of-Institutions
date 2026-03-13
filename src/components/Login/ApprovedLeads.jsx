@@ -3,7 +3,7 @@ import { Mail, Phone, ChevronLeft, ChevronRight, UserMinus, RotateCcw, ShieldChe
 import toast, { Toaster } from 'react-hot-toast';
 import { confirmToast } from '../../utils/toastConfirm';
 import { API_BASE_URL } from '../../apiConfig';
-import { exportToCsv } from '../../utils/exportCsv';
+import { exportToExcel } from '../../utils/exportExcel';
 
 export function ApprovedLeads() {
   const [approvedLeads, setApprovedLeads] = useState([]);
@@ -158,8 +158,8 @@ export function ApprovedLeads() {
     setSelectedLeadIds([]);
   };
 
-  const exportLeadsCsv = async () => {
-    const confirmed = await confirmToast("Export current table to CSV?", "Export");
+  const exportLeadsExcel = async () => {
+    const confirmed = await confirmToast("Export current table to Excel?", "Export");
     if (!confirmed) return;
     const columns = [
       { header: "Date", accessor: (l) => formatDateTime(l.created_at).date },
@@ -169,7 +169,7 @@ export function ApprovedLeads() {
       { header: "Phone", accessor: (l) => l.phone || "" },
       { header: "Business Focus", accessor: (l) => l.business_focus || "" },
     ];
-    await exportToCsv("approved-leads.csv", columns, currentLeads);
+    await exportToExcel("approved-leads.xlsx", columns, currentLeads);
   };
 
   return (
@@ -218,16 +218,18 @@ export function ApprovedLeads() {
             type="button"
             onClick={bulkRemoveLeads}
             disabled={selectedLeadIds.length === 0}
-            className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+            className="p-2.5 rounded-xl bg-red-600 text-white disabled:opacity-50 hover:bg-red-700 transition-colors shadow-lg shadow-red-500/20"
+            title={`Delete Selected (${selectedLeadIds.length})`}
           >
-            Delete Selected ({selectedLeadIds.length})
+            <Trash2 size={20} />
           </button>
           <button
             type="button"
-            onClick={exportLeadsCsv}
-            className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
+            onClick={exportLeadsExcel}
+            className="p-2.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20"
+            title="Export Excel"
           >
-            Export CSV
+            <FileSpreadsheet size={20} />
           </button>
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />

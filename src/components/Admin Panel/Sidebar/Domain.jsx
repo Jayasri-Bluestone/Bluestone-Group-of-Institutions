@@ -4,13 +4,17 @@ import { toast } from 'react-hot-toast';
 import { 
   RefreshCcw, History, Mail, Phone, Calendar, 
   UserCheck, Search, Filter, X, 
-  Edit
+  Edit, Eye, Trash2,
+  Delete,
+  DeleteIcon
 } from 'lucide-react';
 import Pagination from '../Layout/Pagination';
 import LoadingScreen from '../Layout/LoadingScreen';
 import { confirmToast } from '../../../utils/toastConfirm';
-import { exportToCsv } from '../../../utils/exportCsv';
+import { exportToExcel } from '../../../utils/exportExcel';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
+import { RiDeleteBack2Fill, RiDeleteBin4Fill } from 'react-icons/ri';
+import { BiExport } from 'react-icons/bi';
 const DomainPage = ({ domain, user }) => {
     const getTier = (u) => {
         if (u?.tier) return u.tier;
@@ -521,8 +525,8 @@ const allValues = categories.flatMap(c => c.values || []);
         fetchDomainData(data.page, pageSize);
     };
 
-    const exportLeadsCsv = async () => {
-        const confirmed = await confirmToast("Export current table to CSV?", "Export");
+    const exportLeadsExcel = async () => {
+        const confirmed = await confirmToast("Export current table to Excel?", "Export");
         if (!confirmed) return;
         const assignedHeader = isStaffTier ? "Assigned By" : "Assigned To";
         const columns = [
@@ -537,7 +541,7 @@ const allValues = categories.flatMap(c => c.values || []);
             { header: "Date", accessor: (l) => (l.created_at ? new Date(l.created_at).toLocaleDateString("en-GB") : "") },
             { header: "Status", accessor: (l) => l.status || "" },
         ];
-        await exportToCsv("domain-leads.csv", columns, filteredLeads);
+        await exportToExcel("domain-leads.xlsx", columns, filteredLeads);
     };
     if (loading && data.leads.length === 0) {
         return <LoadingScreen message={`Loading ${domain} leads...`} fullPage={false} />;
@@ -555,7 +559,7 @@ const allValues = categories.flatMap(c => c.values || []);
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div>
-                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl leading-none">{domain}</h2>
+                    <h2 className="font-black text-red-600 uppercase tracking-tighter text-xl leading-none">{domain}</h2>
                     <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">{activeViewTitle}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -656,18 +660,19 @@ const allValues = categories.flatMap(c => c.values || []);
                         type="button"
                         onClick={bulkDeleteLeads}
                         disabled={selectedLeadIds.length === 0}
-                        className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+                        className="flex px-1 py-1 rounded-lg text-lg bg-red-600 text-white "
                         title="Delete selected leads"
                     >
-                        Delete Selected ({selectedLeadIds.length})
+                        <RiDeleteBin4Fill/> 
+                        {/* ({selectedLeadIds.length}) */}
                     </button>
                     <button
                         type="button"
-                        onClick={exportLeadsCsv}
-                        className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
-                        title="Export CSV"
+                        onClick={exportLeadsExcel}
+                        className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-slate-900 text-white"
+                        title="Export Excel"
                     >
-                        Export
+                       <BiExport/>
                     </button>
                     <button
                         onClick={() => fetchDomainData(data.page, pageSize)}
@@ -737,8 +742,10 @@ const allValues = categories.flatMap(c => c.values || []);
                                     <td className="p-4 border-r border-slate-50">
                                         {isStaffTier ? (
                                             <div className="flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
-                                                <span className="text-xs font-bold text-slate-700">{lead.assigned_by_name || "System"}</span>
+                                                <div className={`w-1.5 h-1.5 rounded-full ${lead.assigned_by === user.id ? 'bg-emerald-400' : 'bg-blue-400'}`}></div>
+                                                <span className="text-xs font-bold text-slate-700">
+                                                    {lead.assigned_by === user.id ? 'Self' : (lead.assigned_by_name || "System")}
+                                                </span>
                                             </div>
                                         ) : (
                                             <select 
@@ -776,31 +783,31 @@ const allValues = categories.flatMap(c => c.values || []);
                                         <div className="flex items-center justify-center gap-2">
                                             <button
                                                 onClick={() => navigate(`/portal/domain/${location.pathname.split('/').pop()}/lead/${lead.id}`)}
-                                                className="px-2 py-1 text-[9px] font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors uppercase"
+                                                className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors border border-blue-100"
                                                 title="View Details"
                                             >
-                                                View Details
+                                                <Eye size={16} />
                                             </button>
                                             <button
                                                 onClick={() => fetchLeadHistory(lead.id, lead.student_name)}
-                                                className="inline-flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
-                                                title="History"
+                                                className="p-1.5 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
+                                                title="View History"
                                             >
-                                                <History size={10} /> HISTORY
+                                                <History size={16} />
                                             </button>
                                             <button 
                                                 onClick={() => handleEditLead(lead)}
-                                                className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                                                className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-100"
                                                 title="Edit Lead"
                                             >
                                                 <Edit size={16} />
                                             </button>
                                             <button 
                                                 onClick={() => deleteLead(lead.id)}
-                                                className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                                                className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors border border-red-100"
                                                 title="Delete Lead"
                                             >
-                                                <X size={16} className="stroke-[3]" />
+                                                <Trash2 size={16} />
                                             </button>
                                         </div>
                                     </td>

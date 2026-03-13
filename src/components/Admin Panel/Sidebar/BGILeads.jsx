@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { Search, RefreshCcw, History, Edit, X } from "lucide-react";
+import { Search, RefreshCcw, History, Edit, X, Eye, Trash2, DeleteIcon } from "lucide-react";
 import Pagination from "../Layout/Pagination";
 import LoadingScreen from "../Layout/LoadingScreen";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import { confirmToast } from "../../../utils/toastConfirm";
-import { exportToCsv } from "../../../utils/exportCsv";
+import { exportToExcel } from "../../../utils/exportExcel";
+import { RiDeleteBin4Fill } from "react-icons/ri";
+import { FaFileExcel } from "react-icons/fa6";
+import { BiExport } from "react-icons/bi";
 
 const viewConfig = {
   "all-enquiry": { apiView: "all", title: "All Enquiries", forcedStatus: "New" },
@@ -18,6 +21,14 @@ const viewConfig = {
 };
 
 const BGILeads = ({ user }) => {
+  const getTier = (u) => {
+    if (u?.tier) return u.tier;
+    if (["Main Admin", "MD", "GM"].includes(u?.role)) return "SUPER_ADMIN";
+    if (["TL", "Coordinator", "Head"].includes(u?.role)) return "ADMIN";
+    return "STAFF";
+  };
+  const isStaffTier = getTier(user) === "STAFF";
+
   const { view = "all-enquiry" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -606,8 +617,8 @@ const BGILeads = ({ user }) => {
     fetchLeads(data.page || 1, pageSize);
   };
 
-  const exportLeadsCsv = async () => {
-    const confirmed = await confirmToast("Export current table to CSV?", "Export");
+  const exportLeadsExcel = async () => {
+    const confirmed = await confirmToast("Export current table to Excel?", "Export");
     if (!confirmed) return;
     const columns = [
       { header: "Lead ID", accessor: (l) => l.id },
@@ -622,7 +633,7 @@ const BGILeads = ({ user }) => {
       { header: "Date", accessor: (l) => (l.created_at ? new Date(l.created_at).toLocaleDateString("en-GB") : "") },
       { header: "Status", accessor: (l) => l.status || "" },
     ];
-    await exportToCsv("bgi-leads.csv", columns, data.leads);
+    await exportToExcel("bgi-leads.xlsx", columns, data.leads);
   };
 
   if (loading && data.leads.length === 0) {
@@ -724,18 +735,19 @@ const BGILeads = ({ user }) => {
               type="button"
               onClick={bulkDeleteLeads}
               disabled={selectedLeadIds.length === 0}
-              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-red-600 text-white disabled:opacity-50"
+              className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-red-600 text-white"
               title="Delete selected leads"
             >
-              Delete Selected ({selectedLeadIds.length})
+              <RiDeleteBin4Fill/>
+              {/* ({selectedLeadIds.length}) */}
             </button>
             <button
               type="button"
-              onClick={exportLeadsCsv}
-              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white"
-              title="Export CSV"
+              onClick={exportLeadsExcel}
+              className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-slate-900 text-white"
+              title="Export Excel"
             >
-              Export CSV
+              <BiExport/>
             </button>
             <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
             <span>Show</span>
@@ -770,7 +782,7 @@ const BGILeads = ({ user }) => {
                   <th className="p-3 border-r border-slate-100">Domain</th>
                 <th className="p-3 border-r border-slate-100">Category</th>
                 <th className="p-3 border-r border-slate-100">Interest</th>
-                <th className="p-3 border-r border-slate-100">Assigned To</th>
+                <th className="p-3 border-r border-slate-100">{isStaffTier ? 'Assigned By' : 'Assigned To'}</th>
                 <th className="p-3 border-r border-slate-100">Date</th>
                 <th className="p-3 border-r border-slate-100">Status</th>
                 <th className="p-3 text-center">Actions</th>
@@ -796,19 +808,28 @@ const BGILeads = ({ user }) => {
                   <td className="p-3 text-xs font-bold text-slate-700 border-r border-slate-50">{lead.category || "-"}</td>
                   <td className="p-3 text-xs font-bold text-blue-700 border-r border-slate-50">{lead.interested_in || "-"}</td>
                   <td className="p-3 border-r border-slate-50">
-                    <select
-                      className="text-[11px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20"
-                      value={lead.assigned_to || ""}
-                      onChange={(e) => {
-                        const selectedStaff = staffList.find((s) => s.id === parseInt(e.target.value, 10));
-                        assignLead(lead.id, e.target.value, selectedStaff?.name);
-                      }}
-                    >
-                      <option value="">Select Staff</option>
-                      {staffList.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                    {isStaffTier ? (
+                      <div className="flex items-center gap-2">
+                        <div className={`w-1.5 h-1.5 rounded-full ${lead.assigned_by === user.id ? 'bg-emerald-400' : 'bg-blue-400'}`}></div>
+                        <span className="text-xs font-bold text-slate-700">
+                          {lead.assigned_by === user.id ? 'Self' : (lead.assigned_by_name || "System")}
+                        </span>
+                      </div>
+                    ) : (
+                      <select
+                        className="text-[11px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20"
+                        value={lead.assigned_to || ""}
+                        onChange={(e) => {
+                          const selectedStaff = staffList.find((s) => s.id === parseInt(e.target.value, 10));
+                          assignLead(lead.id, e.target.value, selectedStaff?.name);
+                        }}
+                      >
+                        <option value="">Select Staff</option>
+                        {staffList.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="p-3 text-[11px] font-bold text-slate-500 border-r border-slate-50">
                     {lead.created_at ? new Date(lead.created_at).toLocaleDateString("en-GB") : "-"}
@@ -833,30 +854,31 @@ const BGILeads = ({ user }) => {
                     <div className="flex items-center justify-center gap-2">
                       <button
                         onClick={() => goToLeadDetails(lead)}
-                        className="text-[10px] font-black uppercase bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
+                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors border border-blue-100"
+                        title="View Details"
                       >
-                        View Details
+                        <Eye size={16} />
                       </button>
                       <button
                         onClick={() => fetchLeadHistory(lead.id, lead.student_name)}
-                        className="inline-flex items-center gap-1 text-[9px] font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition-colors uppercase"
-                        title="History"
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
+                        title="View History"
                       >
-                        <History size={10} /> View
+                        <History size={16} />
                       </button>
                       <button
                         onClick={() => handleEditLead(lead)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                        className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-100"
                         title="Edit Lead"
                       >
-                        <Edit size={14} />
+                        <Edit size={16} />
                       </button>
                       <button
                         onClick={() => deleteLead(lead.id)}
-                        className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                        className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors border border-red-100"
                         title="Delete Lead"
                       >
-                        <X size={14} className="stroke-[3]" />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>

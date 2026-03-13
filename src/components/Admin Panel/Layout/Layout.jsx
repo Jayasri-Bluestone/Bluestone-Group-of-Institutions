@@ -13,7 +13,7 @@ import {
   Baby,
   Rocket,
   Search,
-  UserPlus,
+  Plus,
   Calendar,
   Bell,
   X,
@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  ImportIcon,
 } from "lucide-react";
 import {
   FaGraduationCap,
@@ -45,6 +46,7 @@ import * as RiIcons from "react-icons/ri";
 import * as BiIcons from "react-icons/bi";
 import * as XLSX from "xlsx";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
+import ExcelImportModal from "../Sidebar/ExcelImportModal";
 const Layout = ({ user, onLogout, onUpdateUser }) => {
   const getTier = (u) => {
     if (u?.tier) return u.tier;
@@ -237,60 +239,10 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     fetchAllNotifications();
   }, [selectedNotiDate, visibleNotiMonth]);
   // --- EXCEL IMPORT LOGIC ---
-  const handleExcelImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const pathParts = location.pathname.split("/");
-    const currentSlug = pathParts[pathParts.length - 1];
-    const slugToDomain = {
-      ias: "IAS Academy",
-      techpark: "Techpark",
-      overseas: "Overseas",
-      placements: "Placements",
-      languages: "Language Hub",
-      sports: "Elite Sports",
-      preschool: "Preschool",
-      startup: "Startup",
-    };
-    const detectedDomain =
-      slugToDomain[currentSlug] || user?.domain || "General";
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target.result;
-        const wb = XLSX.read(bstr, { type: "binary" });
-        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        const leadsToUpload = data.map((row) => ({
-          student_name: row.Name || row.student_name,
-          email: row.Email || row.email || "",
-          phone: row.Phone || row.phone,
-          domain: detectedDomain,
-          source: row.Source || "Bulk Import",
-          category: row.Category || "",
-          interested_in: row.Interest || row.interested_in || "",
-          remarks: row.Remarks || "",
-        }));
-        const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/bulk`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-          body: JSON.stringify({ leads: leadsToUpload }),
-        });
-        if (res.ok) {
-          toast.success(
-            `Success: ${leadsToUpload.length} leads added to ${detectedDomain}`,
-          );
-        } else {
-          toast.error("Bulk upload failed");
-        }
-      } catch {
-        toast.error("Error processing Excel file.");
-      }
-    };
-    reader.readAsBinaryString(file);
-    e.target.value = null;
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  const handleExcelImport = () => {
+    setShowImportModal(true);
   };
   // --- MASTER DATA & SEARCH LOGIC ---
   useEffect(() => {
@@ -647,6 +599,15 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     }
     // 2. Start Loading State
     setIsSubmitting(true);
+    const isStaff = getTier(user) === "STAFF";
+    const payload = {
+      ...enquiryData,
+      assigned_to: isStaff ? user.id : null,
+      assigned_to_name: isStaff ? user.name : null,
+      assigned_by: isStaff ? user.id : null,
+      assigned_by_name: isStaff ? user.name : null
+    };
+
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads`, {
         method: "POST",
@@ -654,7 +615,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`, // Ensure token is included
         },
-        body: JSON.stringify(enquiryData),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         toast.success("Lead successfully added");
@@ -1064,25 +1025,18 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
 
             <div className="flex items-center gap-4 ml-4">
               {/* IMPORT & ENQUIRY */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept=".xlsx, .xls"
-                onChange={handleExcelImport}
-              />
               <button
-                onClick={() => fileInputRef.current.click()}
-                className="hidden md:flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition-all"
+                onClick={handleExcelImport}
+                className="hidden md:flex items-center justify-center p-2.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-all shadow-sm"
+                title="Import Leads"
               >
-                <Database size={16} /> Import
+                <ImportIcon size={20} />
               </button>
               <button
                 onClick={() => setShowEnquiry(true)}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-md hover:bg-red-700"
-              >
-                <UserPlus size={18} />{" "}
-                <span className="hidden lg:inline">Enquiry Form</span>
+                className="bg-red-600 text-white p-2 font-bold rounded-xl flex items-center justify-center shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all"
+                title="New Enquiry Form"
+              > Enquiry Form
               </button>
               {/* NOTIFICATION BELL */}
               <div
@@ -1640,6 +1594,15 @@ ${isSelected
         )}
       </div>
 
+      <ExcelImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        user={user}
+        domains={masterData}
+        onSuccess={() => {
+          if (typeof triggerMenuRefresh === "function") triggerMenuRefresh();
+        }}
+      />
     </>
   );
 };
