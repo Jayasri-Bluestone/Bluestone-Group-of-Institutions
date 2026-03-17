@@ -67,6 +67,7 @@ const DomainPage = ({ domain, user }) => {
     const [selectedLead, setSelectedLead] = useState(null);
     const [masterData, setMasterData] = useState([]);
     const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+    const [bulkAssignStaff, setBulkAssignStaff] = useState("");
 const [categoryFilter, setCategoryFilter] = useState('All');
 const [interestFilter, setInterestFilter] = useState('All');
 const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
@@ -193,23 +194,40 @@ useEffect(() => {
         navigate(`/portal/domain/${fallbackSlug}`, { replace: true });
     }
 }, [domain, user, navigate, isSuperAdmin]);
-const fetchStaff = useCallback(async () => {
+const fetchUsers = useCallback(async () => {
     if (!isAdminTier) return;
     try {
-        // Pass the current domain page so backend filters staff by this domain only
         const domainParam = encodeURIComponent(domain || '');
-        const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff-list?domain=${domainParam}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        if (res.ok) setStaffList(await res.json());
+        const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
+        
+        const [staffRes, tlRes] = await Promise.all([
+            fetch(`${API_BASE_URL_PORTAL}/api/staff-list?domain=${domainParam}`, { headers }),
+            fetch(`${API_BASE_URL_PORTAL}/api/tl-list?domain=${domainParam}`, { headers })
+        ]);
+
+        let combined = [];
+        if (staffRes.ok) {
+            const staff = await staffRes.json();
+            combined = [...combined, ...staff];
+        }
+        if (tlRes.ok) {
+            const tls = await tlRes.json();
+            combined = [...combined, ...tls];
+        }
+
+        // Filter out self and ensure unique IDs
+        const unique = Array.from(new Map(combined.map(u => [u.id, u])).values())
+            .filter(u => u.id !== user.id);
+            
+        setStaffList(unique);
     } catch (err) { 
         console.error(err); 
     }
-}, [isAdminTier, domain]);
+}, [isAdminTier, domain, user.id]);
     useEffect(() => {
         fetchDomainData();
-        fetchStaff();
-    }, [fetchDomainData, fetchStaff]);
+        fetchUsers();
+    }, [fetchDomainData, fetchUsers]);
     useEffect(() => {
         const timer = setInterval(() => {
             fetchDomainData(data.page || 1, pageSize, { silent: true });
@@ -525,6 +543,51 @@ const allValues = categories.flatMap(c => c.values || []);
         fetchDomainData(data.page, pageSize);
     };
 
+    const bulkAssignLeads = async () => {
+        if (selectedLeadIds.length === 0) return;
+        if (!bulkAssignStaff) {
+            toast.error("Please select a staff member");
+            return;
+        }
+
+        const selectedStaff = staffList.find(s => s.id.toString() === bulkAssignStaff) || 
+                             (bulkAssignStaff === user.id.toString() ? { id: user.id, name: user.name } : null);
+
+        const confirmed = await confirmToast(
+            `Assign ${selectedLeadIds.length} lead(s) to ${selectedStaff?.name || "selected staff"}?`,
+            "Assign"
+        );
+        if (!confirmed) return;
+
+        const tid = toast.loading(`Assigning ${selectedLeadIds.length} lead(s)...`);
+        try {
+            const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/bulk-assign`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                },
+                body: JSON.stringify({
+                    leadIds: selectedLeadIds,
+                    staffId: bulkAssignStaff,
+                    staffName: selectedStaff?.name
+                })
+            });
+
+            if (res.ok) {
+                toast.success(`${selectedLeadIds.length} leads assigned`, { id: tid });
+                setSelectedLeadIds([]);
+                setBulkAssignStaff("");
+                fetchDomainData(data.page, pageSize);
+            } else {
+                const error = await res.json().catch(() => ({}));
+                toast.error(error.msg || "Bulk assignment failed", { id: tid });
+            }
+        } catch {
+            toast.error("Bulk assignment failed", { id: tid });
+        }
+    };
+
     const exportLeadsExcel = async () => {
         const confirmed = await confirmToast("Export current table to Excel?", "Export");
         if (!confirmed) return;
@@ -660,16 +723,38 @@ const allValues = categories.flatMap(c => c.values || []);
                         type="button"
                         onClick={bulkDeleteLeads}
                         disabled={selectedLeadIds.length === 0}
-                        className="flex px-1 py-1 rounded-lg text-lg bg-red-600 text-white "
+                        className="px-1.5 py-1.5 rounded-lg text-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                         title="Delete selected leads"
                     >
                         <RiDeleteBin4Fill/> 
-                        {/* ({selectedLeadIds.length}) */}
                     </button>
+
+                    {selectedLeadIds.length > 0 && !isStaffTier && (
+                        <div className="flex items-center gap-1 bg-blue-50 p-1 rounded-lg border border-blue-100 animate-in fade-in slide-in-from-left-2 duration-200">
+                            <select
+                                value={bulkAssignStaff}
+                                onChange={(e) => setBulkAssignStaff(e.target.value)}
+                                className="text-[10px] font-bold bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:ring-2 ring-blue-500/20 w-32"
+                            >
+                                <option value="">Assign To...</option>
+                                <option value={user.id}>{user.name} (Self)</option>
+                                {staffList.map((s) => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={bulkAssignLeads}
+                                disabled={!bulkAssignStaff}
+                                className="bg-blue-600 text-white text-[10px] font-black uppercase px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center gap-1"
+                            >
+                                Assign
+                            </button>
+                        </div>
+                    )}
                     <button
                         type="button"
                         onClick={exportLeadsExcel}
-                        className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-slate-900 text-white"
+                        className="p-1.5 rounded-lg text-lg font-bold bg-slate-900 text-white hover:bg-slate-800 transition-colors"
                         title="Export Excel"
                     >
                        <BiExport/>
@@ -752,11 +837,14 @@ const allValues = categories.flatMap(c => c.values || []);
                                                 className="text-[11px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20"
                                                 value={lead.assigned_to || ""}
                                                 onChange={(e) => {
-                                                    const selectedStaff = staffList.find(s => s.id === parseInt(e.target.value));
+                                                    const selectedStaff = e.target.value === user.id.toString()
+                                                        ? { id: user.id, name: user.name }
+                                                        : staffList.find(s => s.id.toString() === e.target.value);
                                                     assignLead(lead.id, e.target.value, selectedStaff?.name);
                                                 }}
                                             >
                                                 <option value="">Select Staff</option>
+                                                <option value={user.id}>{user.name} (Self)</option>
                                                 {staffList.map(s => (
                                                     <option key={s.id} value={s.id}>{s.name}</option>
                                                 ))}

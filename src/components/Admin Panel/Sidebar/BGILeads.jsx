@@ -44,6 +44,7 @@ const BGILeads = ({ user }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [bulkAssignStaff, setBulkAssignStaff] = useState("");
 
   const [search, setSearch] = useState("");
   const [domain, setDomain] = useState("All");
@@ -144,25 +145,39 @@ const BGILeads = ({ user }) => {
   }, [user]);
 
   useEffect(() => {
-    const fetchStaff = async () => {
+    const fetchUsers = async () => {
       try {
-        // Pass selected domain so only staff for that domain are shown in assignment dropdown
         const domainParam = domain && domain !== 'All'
           ? `?domain=${encodeURIComponent(domain)}`
           : '';
-        const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff-list${domainParam}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        });
-        if (res.ok) {
-          const json = await res.json();
-          setStaffList(Array.isArray(json) ? json : []);
+        const headers = { Authorization: `Bearer ${localStorage.getItem("token")}` };
+        
+        const [staffRes, tlRes] = await Promise.all([
+          fetch(`${API_BASE_URL_PORTAL}/api/staff-list${domainParam}`, { headers }),
+          fetch(`${API_BASE_URL_PORTAL}/api/tl-list${domainParam}`, { headers })
+        ]);
+
+        let combined = [];
+        if (staffRes.ok) {
+          const staff = await staffRes.json();
+          combined = [...combined, ...staff];
         }
+        if (tlRes.ok) {
+          const tls = await tlRes.json();
+          combined = [...combined, ...tls];
+        }
+
+        // Filter out self and ensure unique IDs
+        const unique = Array.from(new Map(combined.map(u => [u.id, u])).values())
+          .filter(u => u.id !== user.id);
+          
+        setStaffList(unique);
       } catch {
         setStaffList([]);
       }
     };
-    fetchStaff();
-  }, [domain]); // re-fetch whenever the domain filter changes
+    fetchUsers();
+  }, [domain, user.id]); // re-fetch whenever the domain filter changes
 
   const fetchLeads = async (page = 1, limit = pageSize) => {
     setLoading(true);
@@ -365,6 +380,7 @@ const BGILeads = ({ user }) => {
         status: effectiveStatus,
         payment_status: effectivePaymentStatus,
         invalid_reason: invalidReason,
+        source: resolvedView.source || "All",
         sort_by: sortBy,
         sort_order: sortOrder,
       });
@@ -474,6 +490,52 @@ const BGILeads = ({ user }) => {
       fetchLeads(data.page || 1, pageSize);
     } catch {
       toast.error("Assignment failed", { id: tid });
+    }
+  };
+
+  const bulkAssignLeads = async () => {
+    if (selectedLeadIds.length === 0) return;
+    if (!bulkAssignStaff) {
+      toast.error("Please select a staff member");
+      return;
+    }
+
+    const selectedStaff = staffList.find((s) => s.id.toString() === bulkAssignStaff) || 
+                         (bulkAssignStaff === user.id.toString() ? { id: user.id, name: user.name } : null);
+
+    const confirmed = await confirmToast(
+      `Assign ${selectedLeadIds.length} lead(s) to ${selectedStaff?.name || "selected staff"}?`,
+      "Assign"
+    );
+    if (!confirmed) return;
+
+    const tid = toast.loading(`Assigning ${selectedLeadIds.length} lead(s)...`);
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/bulk-assign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({
+          leadIds: selectedLeadIds,
+          staffId: bulkAssignStaff,
+          staffName: selectedStaff?.name,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.msg || "Bulk assignment failed", { id: tid });
+        return;
+      }
+
+      toast.success(`${selectedLeadIds.length} leads assigned`, { id: tid });
+      setSelectedLeadIds([]);
+      setBulkAssignStaff("");
+      fetchLeads(data.page || 1, pageSize);
+    } catch {
+      toast.error("Bulk assignment failed", { id: tid });
     }
   };
 
@@ -735,16 +797,38 @@ const BGILeads = ({ user }) => {
               type="button"
               onClick={bulkDeleteLeads}
               disabled={selectedLeadIds.length === 0}
-              className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-red-600 text-white"
+              className="px-1.5 py-1.5 rounded-lg text-lg font-bold uppercase bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
               title="Delete selected leads"
             >
               <RiDeleteBin4Fill/>
-              {/* ({selectedLeadIds.length}) */}
             </button>
+
+            {selectedLeadIds.length > 0 && !isStaffTier && (
+              <div className="flex items-center gap-1 bg-blue-50 p-1 rounded-lg border border-blue-100 animate-in fade-in slide-in-from-left-2 duration-200">
+                <select
+                  value={bulkAssignStaff}
+                  onChange={(e) => setBulkAssignStaff(e.target.value)}
+                  className="text-[10px] font-bold bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:ring-2 ring-blue-500/20 w-32"
+                >
+                  <option value="">Assign To...</option>
+                  <option value={user.id}>{user.name} (Self)</option>
+                  {staffList.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={bulkAssignLeads}
+                  disabled={!bulkAssignStaff}
+                  className="bg-blue-600 text-white text-[10px] font-black uppercase px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center gap-1"
+                >
+                  Assign
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={exportLeadsExcel}
-              className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-slate-900 text-white"
+              className="p-1.5 rounded-lg text-lg font-bold bg-slate-900 text-white hover:bg-slate-800 transition-colors"
               title="Export Excel"
             >
               <BiExport/>
@@ -820,11 +904,14 @@ const BGILeads = ({ user }) => {
                         className="text-[11px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20"
                         value={lead.assigned_to || ""}
                         onChange={(e) => {
-                          const selectedStaff = staffList.find((s) => s.id === parseInt(e.target.value, 10));
+                          const selectedStaff = e.target.value === user.id.toString()
+                            ? { id: user.id, name: user.name }
+                            : staffList.find((s) => s.id.toString() === e.target.value);
                           assignLead(lead.id, e.target.value, selectedStaff?.name);
                         }}
                       >
                         <option value="">Select Staff</option>
+                        <option value={user.id}>{user.name} (Self)</option>
                         {staffList.map((s) => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}

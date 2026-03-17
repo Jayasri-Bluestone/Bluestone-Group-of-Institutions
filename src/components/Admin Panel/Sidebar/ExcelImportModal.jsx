@@ -20,6 +20,7 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
     }
   }, [user, domains, isOpen]);
 
+
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
@@ -45,6 +46,8 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
           interested_in: row.Interest || row.interested_in || row["Business Focus"] || "",
           remarks: row.Remarks || row.remarks || "",
           source: row.Source || row.source || "Bulk Import",
+          assigned_to: null,
+          assigned_to_name: "",
           isValid: !!(row.Name || row.student_name || row["Candidate Name"]) && !!(row.Phone || row.phone || row["Phone Number"])
         }));
 
@@ -73,14 +76,16 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
     };
     const isStaff = getTier(user) === "STAFF";
 
-    const validLeads = data.filter(l => l.isValid).map(l => ({
-      ...l,
-      domain: targetDomain,
-      assigned_to: isStaff ? user.id : null,
-      assigned_to_name: isStaff ? user.name : null,
-      assigned_by: isStaff ? user.id : null,
-      assigned_by_name: isStaff ? user.name : null
-    }));
+    const validLeads = data.filter(l => l.isValid).map(l => {
+      return {
+        ...l,
+        domain: targetDomain,
+        assigned_to: isStaff ? user.id : null,
+        assigned_to_name: isStaff ? user.name : null,
+        assigned_by: user.id,
+        assigned_by_name: user.name
+      };
+    });
 
     if (validLeads.length === 0) {
       toast.error("No valid leads to import");
@@ -216,13 +221,14 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Name</th>
                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Phone</th>
                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Email</th>
-                        <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Interest</th>
+                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Source</th>
+                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Interest</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {loading ? (
                         <tr>
-                          <td colSpan="5" className="p-8 text-center">
+                          <td colSpan="6" className="p-8 text-center">
                             <Loader2 size={24} className="mx-auto animate-spin text-emerald-500 mb-2" />
                             <p className="text-slate-400 italic">Parsing file...</p>
                           </td>
@@ -240,12 +246,24 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                             <td className="p-3 font-bold text-slate-700">{row.student_name || <span className="text-red-400 italic font-normal">Missing</span>}</td>
                             <td className="p-3 text-slate-600">{row.phone || <span className="text-red-400 italic">Missing</span>}</td>
                             <td className="p-3 text-slate-600">{row.email || "-"}</td>
+                            <td className="p-3 text-slate-600">
+                              <input 
+                                type="text"
+                                value={row.source}
+                                onChange={(e) => {
+                                  const newData = [...data];
+                                  newData[idx].source = e.target.value;
+                                  setData(newData);
+                                }}
+                                className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-emerald-500 focus:outline-none py-1"
+                              />
+                            </td>
                             <td className="p-3 text-slate-600">{row.interested_in || "-"}</td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan="5" className="p-8 text-center text-slate-400 italic">No data found in file</td>
+                          <td colSpan="6" className="p-8 text-center text-slate-400 italic">No data found in file</td>
                         </tr>
                       )}
                     </tbody>

@@ -6,4 +6,4 @@ export const API_BASE_URL = //"http://localhost:5002";
   
 export const API_BASE_URL_PORTAL = 
 //"http://localhost:5005";
-"https://bluestoneinternationalpreschool.com/bgoi_portal";
+ "https://bluestoneinternationalpreschool.com/bgoi_portal";
