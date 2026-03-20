@@ -163,6 +163,14 @@ const UserManagement = ({ user }) => {
     if (!data.employee_id || !String(data.employee_id).trim()) return "Employee ID is required";
     if (!data.name || data.name.length < 3) return "Name must be 3+ chars";
     if (!/^\S+@\S+\.\S+$/.test(data.email)) return "Invalid email";
+    if (!data.phone || !String(data.phone).trim()) return "Phone number is required";
+    if (!data.role) return "Role is required";
+
+    const roleTier = roleHierarchy.find((r) => r.role_name === data.role)?.tier;
+    const isHighLevel = roleTier ? roleTier === "SUPER_ADMIN" : ["Main Admin", "MD", "GM"].includes(data.role);
+
+    if (!isHighLevel && (!data.domain || !String(data.domain).trim())) return "At least one domain must be assigned";
+
     if (isNewUser && (!data.password || data.password.length < 6)) return "Password must be 6+ chars";
     return null;
   };
@@ -381,7 +389,7 @@ const UserManagement = ({ user }) => {
          {/* DOMAIN SELECT */}
       <div className="md:col-span-3 space-y-2">
         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-          Assign Domains
+          Assign Domains <span className="text-red-500">*</span>
         </label>
 
         <div className="py-2  rounded-xl bg-slate-50">
@@ -413,7 +421,7 @@ const UserManagement = ({ user }) => {
       {/* NAME */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-bold uppercase text-slate-400">
-          Full Name
+          Full Name <span className="text-red-500">*</span>
         </label>
         <input
           className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -429,7 +437,7 @@ const UserManagement = ({ user }) => {
       {/* EMPLOYEE ID */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-bold uppercase text-slate-400">
-          Employee ID
+          Employee ID <span className="text-red-500">*</span>
         </label>
         <input
           className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -445,7 +453,7 @@ const UserManagement = ({ user }) => {
       {/* EMAIL */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-bold uppercase text-slate-400">
-          Work Email
+          Work Email <span className="text-red-500">*</span>
         </label>
         <input
           type="email"
@@ -462,7 +470,7 @@ const UserManagement = ({ user }) => {
       {/* PHONE */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-bold uppercase text-slate-400">
-          Phone
+          Phone <span className="text-red-500">*</span>
         </label>
         <input
           className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -478,7 +486,7 @@ const UserManagement = ({ user }) => {
       {/* ROLE */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-bold uppercase text-slate-400">
-          Role
+          Role <span className="text-red-500">*</span>
         </label>
 
         <select
@@ -532,7 +540,7 @@ const UserManagement = ({ user }) => {
           {/* PASSWORD */}
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-bold uppercase text-slate-400">
-          Password
+          Password <span className="text-red-500">*</span>
         </label>
 
         <input
@@ -814,7 +822,7 @@ const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy,
     <td className="p-4">
       <input
         className="w-full border p-2 rounded-lg text-sm"
-        placeholder="Employee ID"
+        placeholder="Employee ID *"
         value={editFormData.employee_id || ""}
         onChange={(e) => setEditFormData({ ...editFormData, employee_id: e.target.value })}
       />
@@ -824,13 +832,13 @@ const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy,
     <td className="p-4 space-y-2">
       <input
         className="w-full border p-2 rounded-lg text-sm mb-1"
-        placeholder="Full Name"
+        placeholder="Full Name *"
         value={editFormData.name}
         onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
       />
       <input
         className="w-full border p-2 rounded-lg text-xs bg-slate-50"
-        placeholder="Work Email"
+        placeholder="Work Email *"
         value={editFormData.email}
         onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
       />
@@ -866,7 +874,7 @@ const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy,
        {/* MULTI-DOMAIN EDIT DROPDOWN */}
 <div className="space-y-1 mt-1">
   <label className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">
-    Assigned Domains
+    Assigned Domains <span className="text-red-500">*</span>
   </label>
 
   {((roleHierarchy.find((r) => r.role_name === editFormData.role)?.tier || "") === "SUPER_ADMIN" ||
@@ -895,7 +903,7 @@ const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy,
     <td className="p-4 space-y-2">
       <input
         className="w-full border p-2 rounded-lg text-sm"
-        placeholder="Phone"
+        placeholder="Phone *"
         value={editFormData.phone}
         onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
       />
