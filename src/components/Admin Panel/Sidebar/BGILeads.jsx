@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { Search, RefreshCcw, History, Edit, X, Eye, Trash2, DeleteIcon } from "lucide-react";
+import { Search, RefreshCcw, History, Edit, X, Eye, Trash2, DeleteIcon, ChevronUp, ChevronDown } from "lucide-react";
 import Pagination from "../Layout/Pagination";
 import LoadingScreen from "../Layout/LoadingScreen";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
@@ -23,8 +23,9 @@ const viewConfig = {
 const BGILeads = ({ user }) => {
   const getTier = (u) => {
     if (u?.tier) return u.tier;
-    if (["Main Admin", "MD", "GM"].includes(u?.role)) return "SUPER_ADMIN";
-    if (["TL", "Coordinator", "Head"].includes(u?.role)) return "ADMIN";
+    const r = u?.role || '';
+    if (["Main Admin", "MD", "GM", "Super Admin"].includes(r)) return "SUPER_ADMIN";
+    if (["TL", "Coordinator", "Head", "Admin"].includes(r)) return "ADMIN";
     return "STAFF";
   };
   const isStaffTier = getTier(user) === "STAFF";
@@ -109,14 +110,7 @@ const BGILeads = ({ user }) => {
         if (res.ok) {
           const json = await res.json();
           const allDomains = Array.isArray(json) ? json : [];
-          
-          const getTier = (u) => {
-            if (u?.tier) return u.tier;
-            if (['Main Admin', 'MD', 'GM'].includes(u?.role)) return 'SUPER_ADMIN';
-            if (['TL', 'Coordinator', 'Head'].includes(u?.role)) return 'ADMIN';
-            return 'STAFF';
-          };
-          
+
           const tier = getTier(user);
           const isSuperAdmin = tier === 'SUPER_ADMIN';
           const isAdminTier = tier === 'ADMIN' || isSuperAdmin;
@@ -124,14 +118,14 @@ const BGILeads = ({ user }) => {
 
           let filteredMaster = allDomains;
           if (!isSuperAdmin) {
-            filteredMaster = allDomains.filter(d => 
+            filteredMaster = allDomains.filter(d =>
               userDomainsList.includes(d.name.toLowerCase())
             );
           }
 
           setDomains(filteredMaster.map((d) => d.name));
           setMasterData(filteredMaster);
-          
+
           // If admin has specific domains, default to 'All' to aggregate,
           // or pick first one if they specifically want a single view.
           // The search/filter logic handles 'All' by showing everything in masterData/domains list.
@@ -151,7 +145,7 @@ const BGILeads = ({ user }) => {
           ? `?domain=${encodeURIComponent(domain)}`
           : '';
         const headers = { Authorization: `Bearer ${localStorage.getItem("token")}` };
-        
+
         const [staffRes, tlRes] = await Promise.all([
           fetch(`${API_BASE_URL_PORTAL}/api/staff-list${domainParam}`, { headers }),
           fetch(`${API_BASE_URL_PORTAL}/api/tl-list${domainParam}`, { headers })
@@ -170,7 +164,7 @@ const BGILeads = ({ user }) => {
         // Filter out self and ensure unique IDs
         const unique = Array.from(new Map(combined.map(u => [u.id, u])).values())
           .filter(u => u.id !== user.id);
-          
+
         setStaffList(unique);
       } catch {
         setStaffList([]);
@@ -409,7 +403,7 @@ const BGILeads = ({ user }) => {
             return st.includes("waiting");
           }
           if (wanted.includes(',')) {
-              return wanted.split(',').map(s=>s.trim()).includes(st);
+            return wanted.split(',').map(s => s.trim()).includes(st);
           }
           return st === wanted;
         }
@@ -418,14 +412,14 @@ const BGILeads = ({ user }) => {
 
       const todayFilteredLeads = todayOnly
         ? filteredLeads.filter((lead) => {
-            const d = new Date(lead.created_at);
-            const now = new Date();
-            return (
-              d.getFullYear() === now.getFullYear() &&
-              d.getMonth() === now.getMonth() &&
-              d.getDate() === now.getDate()
-            );
-          })
+          const d = new Date(lead.created_at);
+          const now = new Date();
+          return (
+            d.getFullYear() === now.getFullYear() &&
+            d.getMonth() === now.getMonth() &&
+            d.getDate() === now.getDate()
+          );
+        })
         : filteredLeads;
 
       setData({
@@ -500,8 +494,8 @@ const BGILeads = ({ user }) => {
       return;
     }
 
-    const selectedStaff = staffList.find((s) => s.id.toString() === bulkAssignStaff) || 
-                         (bulkAssignStaff === user.id.toString() ? { id: user.id, name: user.name } : null);
+    const selectedStaff = staffList.find((s) => s.id.toString() === bulkAssignStaff) ||
+      (bulkAssignStaff === user.id.toString() ? { id: user.id, name: user.name } : null);
 
     const confirmed = await confirmToast(
       `Assign ${selectedLeadIds.length} lead(s) to ${selectedStaff?.name || "selected staff"}?`,
@@ -698,6 +692,32 @@ const BGILeads = ({ user }) => {
     await exportToExcel("bgi-leads.xlsx", columns, data.leads);
   };
 
+  const SortHeader = ({ label, sortKey, className = "" }) => {
+    const isActive = sortBy === sortKey;
+    return (
+      <th
+        className={`px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:bg-slate-100/50 transition-colors ${className}`}
+        onClick={() => {
+          if (isActive) {
+            setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+          } else {
+            setSortBy(sortKey);
+            setSortOrder("desc");
+          }
+          fetchLeads(1, pageSize);
+        }}
+      >
+        <div className="flex items-center gap-1.5 justify-start">
+          {label}
+          <div className="flex flex-col -gap-1">
+            <ChevronUp size={10} className={isActive && sortOrder === "asc" ? "text-blue-600" : "text-slate-300"} />
+            <ChevronDown size={10} className={isActive && sortOrder === "desc" ? "text-blue-600" : "text-slate-300"} />
+          </div>
+        </div>
+      </th>
+    );
+  };
+
   if (loading && data.leads.length === 0) {
     return <LoadingScreen message="Loading BGI leads..." fullPage={false} />;
   }
@@ -722,7 +742,7 @@ const BGILeads = ({ user }) => {
           />
         </div>
         <select value={domain} onChange={(e) => setDomain(e.target.value)} className="border border-slate-200 rounded-lg text-sm px-3 py-2">
-          <option value="All">{['Main Admin', 'MD', 'GM'].includes(user?.role) || user?.tier === 'SUPER_ADMIN' ? 'All Domains' : 'All Assigned Domains'}</option>
+          <option value="All">{['Main Admin', 'MD', 'GM', 'Super Admin'].includes(user?.role) || user?.tier === 'SUPER_ADMIN' ? 'All Domains' : 'All Assigned Domains'}</option>
           {domains.map((d) => (
             <option key={d} value={d}>{d}</option>
           ))}
@@ -741,7 +761,7 @@ const BGILeads = ({ user }) => {
           {resolvedView.apiView !== "payment" && <option value="Unpaid">Unpaid</option>}
           <option value="Partially Paid">Partially Paid</option>
         </select>
-        
+
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg text-sm px-3 py-2">
           <option value="created_at">Sort: Date</option>
           <option value="student_name">Sort: Name</option>
@@ -800,7 +820,7 @@ const BGILeads = ({ user }) => {
               className="px-1.5 py-1.5 rounded-lg text-lg font-bold uppercase bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
               title="Delete selected leads"
             >
-              <RiDeleteBin4Fill/>
+              <RiDeleteBin4Fill />
             </button>
 
             {selectedLeadIds.length > 0 && !isStaffTier && (
@@ -831,20 +851,20 @@ const BGILeads = ({ user }) => {
               className="p-1.5 rounded-lg text-lg font-bold bg-slate-900 text-white hover:bg-slate-800 transition-colors"
               title="Export Excel"
             >
-              <BiExport/>
+              <BiExport />
             </button>
             <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
-            <span>Show</span>
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="border border-slate-200 rounded px-2 py-1"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+              <span>Show</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="border border-slate-200 rounded px-2 py-1"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
             </div>
           </div>
         </div>
@@ -861,15 +881,15 @@ const BGILeads = ({ user }) => {
                     aria-label="Select all leads"
                   />
                 </th>
-                <th className="p-3 border-r border-slate-100">Candidate</th>
-                <th className="p-3 border-r border-slate-100">Phone</th>
-                  <th className="p-3 border-r border-slate-100">Domain</th>
-                <th className="p-3 border-r border-slate-100">Category</th>
-                <th className="p-3 border-r border-slate-100">Interest</th>
-                <th className="p-3 border-r border-slate-100">{isStaffTier ? 'Assigned By' : 'Assigned To'}</th>
-                <th className="p-3 border-r border-slate-100">Date</th>
-                <th className="p-3 border-r border-slate-100">Status</th>
-                <th className="p-3 text-center">Actions</th>
+                <SortHeader label="Candidate" sortKey="student_name" className="border-r border-slate-100" />
+                <th className="p-3 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Phone</th>
+                <SortHeader label="Domain" sortKey="domain" className="border-r border-slate-100" />
+                <th className="p-3 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Category</th>
+                <th className="p-3 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Interest</th>
+                <th className="p-3 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">{isStaffTier ? 'Assigned By' : 'Assigned To'}</th>
+                <SortHeader label="Date" sortKey="created_at" className="border-r border-slate-100" />
+                <SortHeader label="Status" sortKey="status" className="border-r border-slate-100" />
+                <th className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -888,7 +908,7 @@ const BGILeads = ({ user }) => {
                     <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`} - {lead.domain}</p>
                   </td>
                   <td className="p-3 text-xs font-medium text-slate-600 border-r border-slate-50">{lead.phone}</td>
-                   <td className="p-3 text-xs font-medium text-slate-600 border-r border-slate-50">{lead.domain}</td>
+                  <td className="p-3 text-xs font-medium text-slate-600 border-r border-slate-50">{lead.domain}</td>
                   <td className="p-3 text-xs font-bold text-slate-700 border-r border-slate-50">{lead.category || "-"}</td>
                   <td className="p-3 text-xs font-bold text-blue-700 border-r border-slate-50">{lead.interested_in || "-"}</td>
                   <td className="p-3 border-r border-slate-50">

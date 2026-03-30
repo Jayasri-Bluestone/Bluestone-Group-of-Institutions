@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { toast } from "react-hot-toast";
 import {
   UserPlus, Mail, Phone, Trash2, Edit, Save, X, ShieldCheck,
-  Search, Loader2, History, RefreshCcw, ChevronDown,
+  Search, Loader2, History, RefreshCcw, ChevronDown, ChevronUp
 } from "lucide-react";
 import LoadingScreen from "../Layout/LoadingScreen";
 import Pagination from "../Layout/Pagination";
@@ -12,6 +12,15 @@ import MultiDomainDropdown from "./MultiSelectDD";
 import { exportToExcel } from "../../../utils/exportExcel";
 import { RiDeleteBin4Fill } from "react-icons/ri";
 import { BiExport } from "react-icons/bi";
+
+
+const getUserTier = (u) => {
+  if (u?.tier) return u.tier;
+  const r = String(u?.role || "").trim();
+  if (["Main Admin", "MD", "GM", "Super Admin"].includes(r)) return "SUPER_ADMIN";
+  if (["TL", "Coordinator", "Head", "Admin"].includes(r)) return "ADMIN";
+  return "STAFF";
+};
 
 
 const UserManagement = ({ user }) => {
@@ -28,6 +37,8 @@ const UserManagement = ({ user }) => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [itemsPerPageValue, setItemsPerPageValue] = useState(10);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [sortBy, setSortBy] = useState("name");
+  const [sortOrder, setSortOrder] = useState("asc");
 
   const [editFormData, setEditFormData] = useState({});
   const editRowRef = useRef(null);
@@ -40,6 +51,7 @@ const UserManagement = ({ user }) => {
     email: "",
     phone: "",
     domain: "",
+    tier: "STAFF",
     role: "Staff",
     designation: "",
     password: "",
@@ -73,27 +85,82 @@ const UserManagement = ({ user }) => {
     }, AUTO_REFRESH_MS);
     return () => clearInterval(timer);
   }, [fetchData]);
+ 
+  // --- LOGIC: PERMISSIONS & DOMAIN FILTERING ---
+
+  const hasDomainOverlap = useCallback((adminDomainStr, targetDomainStr) => {
+    const adminTier = getUserTier(user);
+    if (adminTier === 'SUPER_ADMIN') return true;
+    
+    const adStr = String(adminDomainStr || "").trim();
+    if (!adStr) return false;
+    if (adStr.toLowerCase() === 'all') return true;
+
+    const tdStr = String(targetDomainStr || "").trim();
+    // If staff has NO domain, show them to admins (unassigned staff)
+    if (!tdStr) return true;
+    // If staff has ALL domains, they are visible to any admin
+    if (tdStr.toLowerCase() === 'all') return true;
+
+    const adminDomains = adStr.split(',').map(d => d.trim().toLowerCase());
+    const targetDomains = tdStr.split(',').map(d => d.trim().toLowerCase());
+
+    return targetDomains.some(td => adminDomains.includes(td));
+  }, [user, getUserTier]);
+
+  const accessibleDomains = useMemo(() => {
+    const adminTier = getUserTier(user);
+    const adminDomain = String(user?.domain || "").trim();
+    
+    // Only SUPER_ADMIN gets all domains by default. 
+    // ADMIN and STAFF only get domains assigned to them.
+    if (adminTier === 'SUPER_ADMIN') {
+      return dynamicDomains;
+    }
+    
+    if (adminDomain.toLowerCase() === 'all') return dynamicDomains;
+    const adminDomains = adminDomain.split(',').map(d => d.trim().toLowerCase());
+    return dynamicDomains.filter(d => adminDomains.includes((d.name || "").toLowerCase()));
+  }, [user, dynamicDomains, getUserTier]);
 
   // --- LOGIC: FILTERING ---
-  const filteredStaff = staff.filter(user =>
+  const filteredStaff = staff.filter(u =>
     (
-      (user.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      String(user.employee_id || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.domain || "").toLowerCase().includes(searchTerm.toLowerCase())
+      (u.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(u.employee_id || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (u.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (u.domain || "").toLowerCase().includes(searchTerm.toLowerCase())
     ) &&
     (
       statusFilter === "all" ||
-      (statusFilter === "active" && Number(user.is_active) === 1) ||
-      (statusFilter === "inactive" && Number(user.is_active) === 0)
+      (statusFilter === "active" && Number(u.is_active) === 1) ||
+      (statusFilter === "inactive" && Number(u.is_active) === 0)
+    ) &&
+    (
+      getUserTier(user) === 'SUPER_ADMIN' || 
+      (getUserTier(u) === 'STAFF' && hasDomainOverlap(user?.domain, u.domain))
     )
-  );
+  ).sort((a, b) => {
+    const aVal = a[sortBy] || "";
+    const bVal = b[sortBy] || "";
+
+    if (typeof aVal === "string") {
+      const aStr = aVal.toLowerCase();
+      const bStr = bVal.toLowerCase();
+      if (aStr < bStr) return sortOrder === "asc" ? -1 : 1;
+      if (aStr > bStr) return sortOrder === "asc" ? 1 : -1;
+    } else {
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+    }
+    return 0;
+  });
 
   // --- LOGIC: PAGINATION CALCULATIONS ---
   const totalPages = Math.ceil(filteredStaff.length / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredStaff.slice(indexOfFirstItem, indexOfLastItem);
+  const currentItems = (filteredStaff || []).slice(indexOfFirstItem, indexOfLastItem);
   const enableTableScroll =
     (itemsPerPageValue === 'all' && filteredStaff.length > 10) ||
     (itemsPerPageValue !== 'all' && Number(itemsPerPageValue) > 10);
@@ -164,10 +231,12 @@ const UserManagement = ({ user }) => {
     if (!data.name || data.name.length < 3) return "Name must be 3+ chars";
     if (!/^\S+@\S+\.\S+$/.test(data.email)) return "Invalid email";
     if (!data.phone || !String(data.phone).trim()) return "Phone number is required";
+
+    const tier = getUserTier(data);
+    if (!tier) return "Tier is required";
     if (!data.role) return "Role is required";
 
-    const roleTier = roleHierarchy.find((r) => r.role_name === data.role)?.tier;
-    const isHighLevel = roleTier ? roleTier === "SUPER_ADMIN" : ["Main Admin", "MD", "GM"].includes(data.role);
+    const isHighLevel = tier === "SUPER_ADMIN" || tier === "ADMIN";
 
     if (!isHighLevel && (!data.domain || !String(data.domain).trim())) return "At least one domain must be assigned";
 
@@ -181,9 +250,17 @@ const UserManagement = ({ user }) => {
     if (error) return toast.error(error);
     const confirmed = await confirmToast(`Create account for ${formData.name}?`, "Create");
     if (!confirmed) return;
-    const roleTier = roleHierarchy.find((r) => r.role_name === formData.role)?.tier;
-    const isHighLevel = roleTier ? roleTier === "SUPER_ADMIN" : ["Main Admin", "MD", "GM"].includes(formData.role);
-    const submissionData = { ...formData, domain: isHighLevel ? "All" : formData.domain };
+    const adminTier = getUserTier(user);
+    const targetTier = formData.tier;
+    
+    // Logic: 
+    // - Only SUPER_ADMIN can create accounts with "All" domains.
+    // - If a SUPER_ADMIN is creating another SUPER_ADMIN, give "All".
+    // - If it's an ADMIN being created, they keep their selected domains unless the creator is a Super Admin who explicitly wants "All" (not implemented here, we stay safe).
+    // Actually, per user request: "Super admin only can access all domain"
+    const domainToSave = (targetTier === "SUPER_ADMIN") ? "All" : formData.domain;
+
+    const submissionData = { ...formData, domain: domainToSave };
     const loadToast = toast.loading("Registering staff...");
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/auth/register`, {
@@ -193,7 +270,7 @@ const UserManagement = ({ user }) => {
       });
       if (res.ok) {
         toast.success("Account created!", { id: loadToast });
-        setFormData({ employee_id: "", name: "", email: "", phone: "", domain: "", role: "Staff", designation: "", password: "" });
+        setFormData({ employee_id: "", name: "", email: "", phone: "", domain: "", tier: "STAFF", role: "Staff", designation: "", password: "" });
         fetchData();
       } else {
         const errData = await res.json();
@@ -311,11 +388,22 @@ const UserManagement = ({ user }) => {
     const confirmed = await confirmToast(`Update account for ${editFormData.name}?`, "Update");
     if (!confirmed) return;
     const loadToast = toast.loading("Updating staff...");
+    const resolvedTier = getUserTier(editFormData);
+    
+    // Only SUPER_ADMIN should have "All" domains
+    const domainToSave = (resolvedTier === "SUPER_ADMIN") ? "All" : editFormData.domain;
+
+    const updateData = { 
+      ...editFormData, 
+      tier: resolvedTier,
+      domain: domainToSave
+    };
+
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/staff/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-        body: JSON.stringify(editFormData),
+        body: JSON.stringify(updateData),
       });
       if (res.ok) {
         toast.success("Staff updated", { id: loadToast });
@@ -361,212 +449,252 @@ const UserManagement = ({ user }) => {
 
   const activeHierarchy = roleHierarchy.filter((r) => Number(r.is_active) === 1);
 
-  
+  const SortHeader = ({ label, sortKey, className = "" }) => {
+    const isActive = sortBy === sortKey;
+    return (
+      <th
+        className={`p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:bg-slate-100/50 transition-colors ${className}`}
+        onClick={() => {
+          if (isActive) {
+            setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+          } else {
+            setSortBy(sortKey);
+            setSortOrder("desc");
+          }
+        }}
+      >
+        <div className={`flex items-center gap-1.5 ${className.includes('center') ? 'justify-center' : className.includes('right') ? 'justify-end' : 'justify-start'}`}>
+          {label}
+          <div className="flex flex-col -gap-1">
+            <ChevronUp size={10} className={isActive && sortOrder === "asc" ? "text-blue-600" : "text-slate-300"} />
+            <ChevronDown size={10} className={isActive && sortOrder === "desc" ? "text-blue-600" : "text-slate-300"} />
+          </div>
+        </div>
+      </th>
+    );
+  };
 
   return (
-  
- <div className=" min-h-screen space-y-8">
 
-  {/* STAFF ONBOARDING */}
-  <div className="bg-white p-8 rounded-3xl shadow-md border border-slate-200">
+    <div className=" min-h-screen space-y-8">
 
-    <div className="flex items-center justify-between mb-6">
-      <h2 className="text-lg font-black text-slate-800 uppercase flex items-center gap-2">
-        <UserPlus size={20} className="text-blue-600" />
-        Staff Onboarding
-      </h2>
+      {/* STAFF ONBOARDING */}
+      <div className="bg-white p-8 rounded-3xl shadow-md border border-slate-200">
 
-      <span className="text-xs text-slate-400 font-semibold">
-        Create new user accounts
-      </span>
-    </div>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-black text-slate-800 uppercase flex items-center gap-2">
+            <UserPlus size={20} className="text-blue-600" />
+            Staff Onboarding
+          </h2>
 
-    <form
-      onSubmit={handleAddUser}
-      className="grid grid-cols-1 md:grid-cols-3 gap-4"
-    >
+          <span className="text-xs text-slate-400 font-semibold">
+            Create new user accounts
+          </span>
+        </div>
 
-         {/* DOMAIN SELECT */}
-      <div className="md:col-span-3 space-y-2">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-          Assign Domains <span className="text-red-500">*</span>
-        </label>
+        <form
+          onSubmit={handleAddUser}
+          className="grid grid-cols-1 md:grid-cols-3 gap-4"
+        >
 
-        <div className="py-2  rounded-xl bg-slate-50">
+          {/* DOMAIN SELECT */}
+          <div className="md:col-span-3 space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Assign Domains <span className="text-red-500">*</span>
+            </label>
 
-          {((roleHierarchy.find((r) => r.role_name === formData.role)?.tier || "") === "SUPER_ADMIN" ||
-            ["Main Admin", "MD", "GM"].includes(formData.role)) ? (
+            <div className="py-2  rounded-xl bg-slate-50">
 
-            <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 w-fit">
-              All Domains (Admin Access)
+              {(formData.tier === "SUPER_ADMIN") ? (
+
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 w-fit">
+                  All Domains (Admin Access)
+                </div>
+
+              ) : (
+
+                <MultiDomainDropdown
+                  domains={accessibleDomains}
+                  value={formData.domain}
+                  onChange={(val) =>
+                    setFormData({
+                      ...formData,
+                      domain: val,
+                    })
+                  }
+                />
+
+              )}
+
             </div>
+          </div>
+          {/* NAME */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400">
+              Full Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Enter full name"
+              required
+              value={formData.name}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
+            />
+          </div>
 
-          ) : (
+          {/* EMPLOYEE ID */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400">
+              Employee ID <span className="text-red-500">*</span>
+            </label>
+            <input
+              className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Employee ID"
+              required
+              value={formData.employee_id}
+              onChange={(e) =>
+                setFormData({ ...formData, employee_id: e.target.value })
+              }
+            />
+          </div>
 
-            <MultiDomainDropdown
-              domains={dynamicDomains}
-              value={formData.domain}
-              onChange={(val) =>
+          {/* EMAIL */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400">
+              Work Email <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="email"
+              className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="name@company.com"
+              required
+              value={formData.email}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
+            />
+          </div>
+
+          {/* TIER */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400">
+              Tier <span className="text-red-500">*</span>
+            </label>
+
+            <select
+              className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              value={formData.tier}
+              onChange={(e) => {
+                const newTier = e.target.value;
+                const firstRoleInTier = activeHierarchy.find(r => r.tier === newTier)?.role_name || 
+                                       (newTier === "STAFF" ? "Staff" : (newTier === "ADMIN" ? "TL" : "Main Admin"));
+                setFormData({ ...formData, tier: newTier, role: firstRoleInTier });
+              }}
+            >
+              {getUserTier(user) === "SUPER_ADMIN" && (
+                <>
+                  <option value="SUPER_ADMIN">Super Admin</option>
+                  <option value="ADMIN">Admin</option>
+                </>
+              )}
+              <option value="STAFF">Staff</option>
+            </select>
+          </div>
+
+          {/* ROLE */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400">
+              Role <span className="text-red-500">*</span>
+            </label>
+
+
+            <select
+              className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              value={formData.role}
+              onChange={(e) =>
+                setFormData({ ...formData, role: e.target.value })
+              }
+            >
+              {activeHierarchy
+                .filter((r) => r.tier === formData.tier)
+                .map((r) => (
+                  <option key={r.id} value={r.role_name}>{r.role_name}</option>
+                ))
+              }
+            </select>
+          </div>
+
+          {/* PHONE */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400">
+              Phone <span className="text-red-500">*</span>
+            </label>
+            <input
+              className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Phone number"
+              required
+              value={formData.phone}
+              onChange={(e) =>
+                setFormData({ ...formData, phone: e.target.value })
+              }
+            />
+          </div>
+
+          {/* DESIGNATION */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400">
+              Designation
+            </label>
+
+            <input
+              className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Optional"
+              value={formData.designation}
+              onChange={(e) =>
                 setFormData({
                   ...formData,
-                  domain: val,
+                  designation: e.target.value,
                 })
               }
             />
+          </div>
 
-          )}
 
-        </div>
-      </div>
-      {/* NAME */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-bold uppercase text-slate-400">
-          Full Name <span className="text-red-500">*</span>
-        </label>
-        <input
-          className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="Enter full name"
-          required
-          value={formData.name}
-          onChange={(e) =>
-            setFormData({ ...formData, name: e.target.value })
-          }
-        />
-      </div>
 
-      {/* EMPLOYEE ID */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-bold uppercase text-slate-400">
-          Employee ID <span className="text-red-500">*</span>
-        </label>
-        <input
-          className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="Employee ID"
-          required
-          value={formData.employee_id}
-          onChange={(e) =>
-            setFormData({ ...formData, employee_id: e.target.value })
-          }
-        />
-      </div>
 
-      {/* EMAIL */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-bold uppercase text-slate-400">
-          Work Email <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="email"
-          className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="name@company.com"
-          required
-          value={formData.email}
-          onChange={(e) =>
-            setFormData({ ...formData, email: e.target.value })
-          }
-        />
-      </div>
-
-      {/* PHONE */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-bold uppercase text-slate-400">
-          Phone <span className="text-red-500">*</span>
-        </label>
-        <input
-          className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="Phone number"
-          required
-          value={formData.phone}
-          onChange={(e) =>
-            setFormData({ ...formData, phone: e.target.value })
-          }
-        />
-      </div>
-
-      {/* ROLE */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-bold uppercase text-slate-400">
-          Role <span className="text-red-500">*</span>
-        </label>
-
-        <select
-          className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          value={formData.role}
-          onChange={(e) =>
-            setFormData({ ...formData, role: e.target.value })
-          }
-        >
-          {activeHierarchy.length > 0 ? (
-            activeHierarchy.map((r) => (
-              <option key={r.id} value={r.role_name}>
-                {r.role_name}
-              </option>
-            ))
-          ) : (
-            <>
-              <option value="Staff">Staff</option>
-              <option value="TL">Team Lead</option>
-              <option value="GM">GM</option>
-              <option value="MD">MD</option>
-              <option value="Main Admin">Admin</option>
-            </>
-          )}
-        </select>
-      </div>
-
-      {/* DESIGNATION */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-bold uppercase text-slate-400">
-          Designation
-        </label>
-
-        <input
-          className="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="Optional"
-          value={formData.designation}
-          onChange={(e) =>
-            setFormData({
-              ...formData,
-              designation: e.target.value,
-            })
-          }
-        />
-      </div>
-
-  
-
-   
 
           {/* PASSWORD */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-bold uppercase text-slate-400">
-          Password <span className="text-red-500">*</span>
-        </label>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400">
+              Password <span className="text-red-500">*</span>
+            </label>
 
-        <input
-          className="p-2.5 border border-blue-200 bg-blue-50 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="Set password"
-          required
-          value={formData.password}
-          onChange={(e) =>
-            setFormData({
-              ...formData,
-              password: e.target.value,
-            })
-          }
-        />
+            <input
+              className="p-2.5 border border-blue-200 bg-blue-50 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Set password"
+              required
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  password: e.target.value,
+                })
+              }
+            />
+          </div>
+
+          {/* SUBMIT BUTTON */}
+          <button
+            type="submit"
+            className="md:col-span-3 bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold transition-all shadow-sm"
+          >
+            Create Account
+          </button>
+
+        </form>
       </div>
-
-      {/* SUBMIT BUTTON */}
-      <button
-        type="submit"
-        className="md:col-span-3 bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold transition-all shadow-sm"
-      >
-        Create Account
-      </button>
-
-    </form>
-  </div>
 
 
 
@@ -603,8 +731,8 @@ const UserManagement = ({ user }) => {
               className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-red-600 text-white disabled:opacity-50"
               title="Delete selected users"
             >
-           <RiDeleteBin4Fill/>
-              
+              <RiDeleteBin4Fill />
+
               {/* ({selectedUserIds.length}) */}
             </button>
             <button
@@ -613,7 +741,7 @@ const UserManagement = ({ user }) => {
               className="px-1 py-1 rounded-lg text-lg font-bold uppercase bg-slate-900 text-white"
               title="Export Excel"
             >
-              <BiExport/>
+              <BiExport />
             </button>
             <select
               value={statusFilter}
@@ -655,44 +783,44 @@ const UserManagement = ({ user }) => {
                     aria-label="Select all users"
                   />
                 </th>
-                <th className="p-4">Employee ID</th>
-
-                <th className="p-4">User Name</th>
-                <th className="p-4">Role / Domain</th>
-                <th className="p-4">Contact Details</th>
-                <th className="p-4 text-center">Status</th>
-
+                <SortHeader label="Employee ID" sortKey="employee_id" />
+                <SortHeader label="User Name" sortKey="name" />
+                <SortHeader label="Tier / Role / Domain" sortKey="tier" />
+                <SortHeader label="Contact Details" sortKey="email" />
+                <SortHeader label="Account Status" sortKey="is_active" className="text-center" />
+                <th className="p-4 text-center">CRM Status</th>
                 <th className="p-4 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {currentItems.map((user) => (
+              {currentItems.map((u) => u && (
                 <tr
-                  key={user.id}
-                  ref={editingId === user.id ? editRowRef : null}
+                  key={u.id}
+                  ref={editingId === u.id ? editRowRef : null}
                   className="hover:bg-slate-50/50 transition-colors"
                 >
                   <td className="p-4">
                     <input
                       type="checkbox"
-                      checked={selectedUserSet.has(user.id)}
-                      onChange={() => toggleSelectUser(user.id)}
-                      aria-label={`Select user ${user.name}`}
+                      checked={selectedUserSet.has(u.id)}
+                      onChange={() => toggleSelectUser(u.id)}
+                      aria-label={`Select user ${u.name || 'Unknown'}`}
                     />
                   </td>
-                  {editingId === user.id ? (
+                  {editingId === u.id ? (
                     <EditRow
                       editFormData={editFormData}
                       setEditFormData={setEditFormData}
-                      dynamicDomains={dynamicDomains}
+                      dynamicDomains={accessibleDomains}
                       roleHierarchy={roleHierarchy}
                       handleSaveEdit={handleSaveEdit}
                       setEditingId={setEditingId}
-                      user={user}
+                      staffMember={u}
+                      loggedInUserTier={getUserTier(user)}
                     />
                   ) : (
                     <DisplayRow
-                      user={user}
+                      staffMember={u}
                       setEditingId={setEditingId}
                       setEditFormData={setEditFormData}
                       handleDelete={handleDelete}
@@ -755,187 +883,226 @@ const UserManagement = ({ user }) => {
 
 // --- SUB-COMPONENTS ---
 
-const DisplayRow = ({ user, setEditingId, setEditFormData, handleDelete, fetchUserHistory, handleToggleStatus }) => (
-  <>
-    <td className="p-4 font-bold text-slate-700">{user.employee_id || "-"}</td>
-    <td className="p-4 font-bold text-slate-700">{user.name}</td>
-    <td className="p-4 min-w-0">
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 uppercase w-fit">{user.role}</span>
-        {user.designation && <span className="text-slate-500 text-[11px] font-semibold">{user.designation}</span>}
-        <div className="flex flex-wrap gap-1 mt-1">
-          {user.domain === "All" ? (
-            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold uppercase border border-slate-200">All Domains</span>
-          ) : (
-            (user.domain || "").split(',').map((d, idx) => d.trim() && (
-              <span key={idx} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-bold uppercase border border-blue-100 whitespace-nowrap">
-                {d.trim()}
-              </span>
-            ))
-          )}
+const DisplayRow = ({ staffMember, setEditingId, setEditFormData, handleDelete, fetchUserHistory, handleToggleStatus }) => {
+  if (!staffMember) return null;
+  return (
+    <>
+      <td className="p-4 font-bold text-slate-700">{staffMember.employee_id || "-"}</td>
+      <td className="p-4 font-bold text-slate-700">{staffMember.name || "-"}</td>
+      <td className="p-4 min-w-0">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex gap-1">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 uppercase w-fit">{staffMember.tier || "STAFF"}</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 uppercase w-fit">{staffMember.role || "Staff"}</span>
+          </div>
+          {staffMember.designation && <span className="text-slate-500 text-[11px] font-semibold">{staffMember.designation}</span>}
+          <div className="flex flex-wrap gap-1 mt-1">
+            {staffMember.domain === "All" ? (
+              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold uppercase border border-slate-200">All Domains</span>
+            ) : (
+              (staffMember.domain || "").split(',').map((d, idx) => d.trim() && (
+                <span key={idx} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-bold uppercase border border-blue-100 whitespace-nowrap">
+                  {d.trim()}
+                </span>
+              ))
+            )}
+          </div>
         </div>
-      </div>
-    </td>
-    <td className="p-4 text-xs text-slate-500">
-      <div>{user.email}</div>
-      <div>{user.phone}</div>
-    </td>
-    <td className="p-4 text-center">
-      <div className="inline-flex items-center gap-2">
-       
-        <button
-          type="button"
-          onClick={() => handleToggleStatus(user)}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${Number(user.is_active) === 1 ? "bg-emerald-500" : "bg-slate-300"}`}
-          title={Number(user.is_active) === 1 ? "Set Inactive" : "Set Active"}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${Number(user.is_active) === 1 ? "translate-x-6" : "translate-x-1"}`}
-          />
-        </button>
-      </div>
-    </td>
-    <td className="p-4">
-      <div className="flex justify-center gap-2">
-        <button
-          onClick={async () => {
-            const confirmed = await confirmToast(`Edit account for ${user.name}?`, "Edit");
-            if (!confirmed) return;
-            setEditingId(user.id);
-            setEditFormData({ ...user, password: "" });
-          }}
-          className="p-2 text-slate-400 hover:text-blue-600"
-        >
-          <Edit size={16} />
-        </button>
-        <button onClick={() => fetchUserHistory(user.id, user.name)} className="p-2 text-slate-400 hover:text-emerald-600"><History size={16} /></button>
-        <button onClick={() => handleDelete(user.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
-      </div>
-    </td>
-  </>
-);
+      </td>
+      <td className="p-4 text-xs text-slate-500">
+        <div>{staffMember.email || "-"}</div>
+        <div>{staffMember.phone || "-"}</div>
+      </td>
+      <td className="p-4 text-center">
+        <div className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleToggleStatus(staffMember)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${Number(staffMember.is_active) === 1 ? "bg-emerald-500" : "bg-slate-300"}`}
+            title={Number(staffMember.is_active) === 1 ? "Set Inactive" : "Set Active"}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${Number(staffMember.is_active) === 1 ? "translate-x-6" : "translate-x-1"}`}
+            />
+          </button>
+        </div>
+      </td>
+      <td className="p-4 text-center">
+        {(() => {
+          const secondsSinceActive = staffMember.seconds_since_active;
+          const isActive = secondsSinceActive !== null && secondsSinceActive !== undefined && (secondsSinceActive >= 0 && secondsSinceActive < 300); // 5 minutes threshold
+          return (
+            <div className="flex items-center justify-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${isActive ? "bg-emerald-500 animate-pulse" : "bg-red-600"}`} />
+              <span className={`text-[10px] font-black uppercase tracking-tight ${isActive ? "text-emerald-700" : "text-red-600"}`}>
+                {isActive ? "Active" : "Inactive"}
+              </span>
+            </div>
+          );
+        })()}
+      </td>
+      <td className="p-4">
+        <div className="flex justify-center gap-2">
+          <button
+            onClick={async () => {
+              const confirmed = await confirmToast(`Edit account for ${staffMember.name}?`, "Edit");
+              if (!confirmed) return;
+              setEditingId(staffMember.id);
+              setEditFormData({ ...staffMember, password: "" });
+            }}
+            className="p-2 text-slate-400 hover:text-blue-600"
+          >
+            <Edit size={16} />
+          </button>
+          <button onClick={() => fetchUserHistory(staffMember.id, staffMember.name)} className="p-2 text-slate-400 hover:text-emerald-600"><History size={16} /></button>
+          <button onClick={() => handleDelete(staffMember.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
+        </div>
+      </td>
+    </>
+  );
+};
 
 
-const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy, handleSaveEdit, setEditingId, user }) => (
-  <>
-    {/* Employee ID */}
-    <td className="p-4">
-      <input
-        className="w-full border p-2 rounded-lg text-sm"
-        placeholder="Employee ID *"
-        value={editFormData.employee_id || ""}
-        onChange={(e) => setEditFormData({ ...editFormData, employee_id: e.target.value })}
-      />
-    </td>
+const EditRow = ({ editFormData, setEditFormData, dynamicDomains, roleHierarchy, handleSaveEdit, setEditingId, staffMember, loggedInUserTier }) => {
+  if (!staffMember) return null;
+  return (
+    <>
+      {/* Employee ID */}
+      <td className="p-4">
+        <input
+          className="w-full border p-2 rounded-lg text-sm"
+          placeholder="Employee ID *"
+          value={editFormData?.employee_id || ""}
+          onChange={(e) => setEditFormData({ ...editFormData, employee_id: e.target.value })}
+        />
+      </td>
 
-    {/* Name & Email Column */}
-    <td className="p-4 space-y-2">
-      <input
-        className="w-full border p-2 rounded-lg text-sm mb-1"
-        placeholder="Full Name *"
-        value={editFormData.name}
-        onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-      />
-      <input
-        className="w-full border p-2 rounded-lg text-xs bg-slate-50"
-        placeholder="Work Email *"
-        value={editFormData.email}
-        onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-      />
-    </td>
+      {/* Name & Email Column */}
+      <td className="p-4 space-y-2">
+        <input
+          className="w-full border p-2 rounded-lg text-sm mb-1"
+          placeholder="Full Name *"
+          value={editFormData?.name || ""}
+          onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+        />
+        <input
+          className="w-full border p-2 rounded-lg text-xs bg-slate-50"
+          placeholder="Work Email *"
+          value={editFormData?.email || ""}
+          onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+        />
+      </td>
 
-    {/* Role & Domain Column */}
-    <td className="p-4">
-      <div className="flex flex-col gap-2">
-        <select className="border p-2 rounded-lg text-xs" value={editFormData.role} onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value })}>
-          {roleHierarchy.filter((r) => Number(r.is_active) === 1).length > 0 ? (
-            roleHierarchy
-              .filter((r) => Number(r.is_active) === 1)
+      {/* Role & Domain Column */}
+      <td className="p-4">
+        <div className="flex flex-col gap-2">
+          <select 
+            className="border p-2 rounded-lg text-xs" 
+            value={getUserTier(editFormData)} 
+            onChange={(e) => {
+              const newTier = e.target.value;
+              const firstRoleInTier = roleHierarchy.find(r => r.tier === newTier && Number(r.is_active) === 1)?.role_name || 
+                                     (newTier === "STAFF" ? "Staff" : (newTier === "ADMIN" ? "TL" : "Main Admin"));
+              setEditFormData(prev => ({ ...prev, tier: newTier, role: firstRoleInTier }));
+            }}
+          >
+            {loggedInUserTier === "SUPER_ADMIN" && (
+              <>
+                <option value="SUPER_ADMIN">Super Admin</option>
+                <option value="ADMIN">Admin</option>
+              </>
+            )}
+            <option value="STAFF">Staff</option>
+          </select>
+            <select 
+            className="border p-2 rounded-lg text-xs" 
+            value={editFormData?.role || ""} 
+            onChange={(e) => setEditFormData(prev => ({ ...prev, role: e.target.value }))}
+          >
+            {roleHierarchy
+              .filter((r) => r.tier === (editFormData.tier || getUserTier(editFormData)) && Number(r.is_active) === 1)
               .map((r) => (
                 <option key={r.id} value={r.role_name}>{r.role_name}</option>
               ))
-          ) : (
-            <>
-              <option value="Staff">Staff</option>
-              <option value="TL">TL</option>
-              <option value="GM">GM</option>
-              <option value="MD">MD</option>
-              <option value="Main Admin">Admin</option>
-            </>
-          )}
-        </select>
+            }
+          </select>
+          <input
+            className="border p-2 rounded-lg text-xs"
+            placeholder="Designation"
+            value={editFormData?.designation || ""}
+            onChange={(e) => setEditFormData(prev => ({ ...prev, designation: e.target.value }))}
+          />
+
+          {/* MULTI-DOMAIN EDIT DROPDOWN */}
+          <div className="space-y-1 mt-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">
+              Assigned Domains <span className="text-red-500">*</span>
+            </label>
+
+            {(editFormData?.tier === "SUPER_ADMIN") ? (
+              <span className="text-[10px] font-bold text-blue-600 px-2 py-1 bg-white border rounded uppercase">
+                ALL ACCESS
+              </span>
+            ) : (
+              <MultiDomainDropdown
+                domains={dynamicDomains}
+                value={editFormData?.domain || ""}
+                onChange={(val) =>
+                  setEditFormData(prev => ({
+                    ...prev,
+                    domain: val,
+                  }))
+                }
+                className="max-w-[240px]"
+              />
+            )}
+          </div>
+        </div>
+      </td>
+
+      {/* Phone & Password Reset Column */}
+      <td className="p-4 space-y-2">
         <input
-          className="border p-2 rounded-lg text-xs"
-          placeholder="Designation"
-          value={editFormData.designation || ""}
-          onChange={(e) => setEditFormData({ ...editFormData, designation: e.target.value })}
+          className="w-full border p-2 rounded-lg text-sm"
+          placeholder="Phone *"
+          value={editFormData?.phone || ""}
+          onChange={(e) => setEditFormData(prev => ({ ...prev, phone: e.target.value }))}
         />
+        <input
+          className="w-full border p-2 rounded-lg text-xs bg-blue-50 border-blue-100 font-mono"
+          placeholder="New Password (or leave blank)"
+          type="text"
+          value={editFormData?.password || ""}
+          onChange={(e) => setEditFormData(prev => ({ ...prev, password: e.target.value }))}
+        />
+      </td>
 
-       {/* MULTI-DOMAIN EDIT DROPDOWN */}
-<div className="space-y-1 mt-1">
-  <label className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">
-    Assigned Domains <span className="text-red-500">*</span>
-  </label>
+      {/* Status Placeholder (not editable in row-edit mode) */}
+      <td className="p-4 text-center">
+        <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${Number(staffMember.is_active) === 1 ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+          {Number(staffMember.is_active) === 1 ? "Active" : "Inactive"}
+        </span>
+      </td>
+      <td className="p-4 text-center">
+        <span className="text-[10px] font-bold text-slate-300 uppercase italic">
+          -
+        </span>
+      </td>
 
-  {((roleHierarchy.find((r) => r.role_name === editFormData.role)?.tier || "") === "SUPER_ADMIN" ||
-    ["Main Admin", "MD", "GM"].includes(editFormData.role)) ? (
-    <span className="text-[10px] font-bold text-blue-600 px-2 py-1 bg-white border rounded">
-      ALL ACCESS
-    </span>
-  ) : (
-    <MultiDomainDropdown
-      domains={dynamicDomains}
-      value={editFormData.domain}
-      onChange={(val) =>
-        setEditFormData({
-          ...editFormData,
-          domain: val,
-        })
-      }
-      className="max-w-[240px]"
-    />
-  )}
-</div>
-      </div>
-    </td>
-
-    {/* Phone & Password Reset Column */}
-    <td className="p-4 space-y-2">
-      <input
-        className="w-full border p-2 rounded-lg text-sm"
-        placeholder="Phone *"
-        value={editFormData.phone}
-        onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
-      />
-      <input
-        className="w-full border p-2 rounded-lg text-xs bg-blue-50 border-blue-100 font-mono"
-        placeholder="New Password (or leave blank)"
-        type="text"
-        value={editFormData.password || ""}
-        onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
-      />
-    </td>
-
-    {/* Status Placeholder (not editable in row-edit mode) */}
-    <td className="p-4 text-center">
-      <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${Number(user.is_active) === 1 ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
-        {Number(user.is_active) === 1 ? "Active" : "Inactive"}
-      </span>
-    </td>
-
-    {/* Actions */}
+      {/* Actions */}
     <td className="p-4 text-center">
       <div className="flex flex-col justify-center gap-2">
-        <button onClick={() => handleSaveEdit(user.id)} className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center justify-center gap-1 text-xs font-bold">
+        <button onClick={() => handleSaveEdit(staffMember.id)} className="w-full p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center justify-center gap-1 text-xs font-bold">
           <Save size={14} /> Update
         </button>
-        <button onClick={() => setEditingId(null)} className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 flex items-center justify-center gap-1 text-xs font-bold">
+        <button onClick={() => setEditingId(null)} className="w-full p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 flex items-center justify-center gap-1 text-xs font-bold">
           <X size={14} /> Cancel
         </button>
       </div>
     </td>
-  </>
-);
+    </>
+  );
+};
 
 
 export default UserManagement;

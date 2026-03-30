@@ -24,7 +24,7 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
-    
+
     setFile(selectedFile);
     setLoading(true);
 
@@ -36,7 +36,7 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
         const wsName = wb.SheetNames[0];
         const ws = wb.Sheets[wsName];
         const jsonData = XLSX.utils.sheet_to_json(ws);
-        
+
         // Normalize fields
         const normalized = jsonData.map(row => ({
           student_name: row.Name || row.student_name || row["Candidate Name"] || "",
@@ -70,8 +70,9 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
 
     const getTier = (u) => {
       if (u?.tier) return u.tier;
-      if (["Main Admin", "MD", "GM"].includes(u?.role)) return "SUPER_ADMIN";
-      if (["TL", "Coordinator", "Head"].includes(u?.role)) return "ADMIN";
+      const r = u?.role || '';
+      if (["Main Admin", "MD", "GM", "Super Admin"].includes(r)) return "SUPER_ADMIN";
+      if (["TL", "Coordinator", "Head", "Admin"].includes(r)) return "ADMIN";
       return "STAFF";
     };
     const isStaff = getTier(user) === "STAFF";
@@ -156,7 +157,7 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                 </div>
                 <h3 className="text-xl font-black text-slate-800 mb-2">Importing Leads...</h3>
                 <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                  We are processing your Excel data and adding <span className="text-emerald-600 font-bold">{validCount}</span> leads to <span className="text-emerald-600 font-bold">{targetDomain}</span>. 
+                  We are processing your Excel data and adding <span className="text-emerald-600 font-bold">{validCount}</span> leads to <span className="text-emerald-600 font-bold">{targetDomain}</span>.
                   Please do not close this window.
                 </p>
                 <div className="w-full mt-6 h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -196,14 +197,14 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                   </select>
                 </div>
                 <div className="flex gap-4 items-end">
-                    <div className="flex-1 bg-emerald-50 border border-emerald-100 p-3 rounded-xl text-center">
-                        <p className="text-[10px] font-black text-emerald-600 uppercase">Valid</p>
-                        <p className="text-xl font-black text-emerald-700">{validCount}</p>
-                    </div>
-                    <div className="flex-1 bg-red-50 border border-red-100 p-3 rounded-xl text-center">
-                        <p className="text-[10px] font-black text-red-600 uppercase">Invalid</p>
-                        <p className="text-xl font-black text-red-700">{invalidCount}</p>
-                    </div>
+                  <div className="flex-1 bg-emerald-50 border border-emerald-100 p-3 rounded-xl text-center">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase">Valid</p>
+                    <p className="text-xl font-black text-emerald-700">{validCount}</p>
+                  </div>
+                  <div className="flex-1 bg-red-50 border border-red-100 p-3 rounded-xl text-center">
+                    <p className="text-[10px] font-black text-red-600 uppercase">Invalid</p>
+                    <p className="text-xl font-black text-red-700">{invalidCount}</p>
+                  </div>
                 </div>
               </div>
 
@@ -221,8 +222,8 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Name</th>
                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Phone</th>
                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Email</th>
-                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Source</th>
-                         <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Interest</th>
+                        <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Source</th>
+                        <th className="p-3 font-bold text-slate-400 uppercase tracking-wider">Interest</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -247,7 +248,7 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                             <td className="p-3 text-slate-600">{row.phone || <span className="text-red-400 italic">Missing</span>}</td>
                             <td className="p-3 text-slate-600">{row.email || "-"}</td>
                             <td className="p-3 text-slate-600">
-                              <input 
+                              <input
                                 type="text"
                                 value={row.source}
                                 onChange={(e) => {
@@ -276,7 +277,7 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
 
         {/* Footer */}
         <div className="p-6 border-t bg-slate-50 flex justify-between items-center">
-          <button 
+          <button
             onClick={() => { setFile(null); setData([]); }}
             className="text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors"
             disabled={!file || importing}

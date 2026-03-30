@@ -9,8 +9,9 @@ import { confirmToast } from "../../../utils/toastConfirm";
 const LeadDetails = ({ user }) => {
   const getTier = (u) => {
     if (u?.tier) return u.tier;
-    if (["Main Admin", "MD", "GM"].includes(u?.role)) return "SUPER_ADMIN";
-    if (["TL", "Coordinator", "Head"].includes(u?.role)) return "ADMIN";
+    const r = u?.role || "";
+    if (["Main Admin", "MD", "GM", "Super Admin"].includes(r)) return "SUPER_ADMIN";
+    if (["TL", "Coordinator", "Head", "Admin"].includes(r)) return "ADMIN";
     return "STAFF";
   };
   const isAdminTier = getTier(user) === "ADMIN" || getTier(user) === "SUPER_ADMIN";
@@ -30,23 +31,23 @@ const LeadDetails = ({ user }) => {
   const [showAddMessage, setShowAddMessage] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [showAllMessages, setShowAllMessages] = useState(false);
-  const [historyData,setHistoryData] = useState([]);
-const [showHistory,setShowHistory] = useState(false);
+  const [historyData, setHistoryData] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
   const recipientPrefKey = `remark_default_recipients_${user?.id || "guest"}`;
 
   const canEditPayments = isAdminTier;
   const [isSendingMessage, setIsSendingMessage] = useState(false);
- const [messageDraft, setMessageDraft] = useState({
-  ref_id: "",
-  subject: "",
-  description: "",
-  recipientUserIds: [],
-  attachment: null,
-  attachmentName: "",
-  attachmentType: ""
-});
+  const [messageDraft, setMessageDraft] = useState({
+    ref_id: "",
+    subject: "",
+    description: "",
+    recipientUserIds: [],
+    attachment: null,
+    attachmentName: "",
+    attachmentType: ""
+  });
 
   const fetchRemarkMessages = async () => {
     try {
@@ -81,45 +82,45 @@ const [showHistory,setShowHistory] = useState(false);
   };
 
   const fetchLead = async () => {
-  setLoading(true);
-  try {
-    const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-    });
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
 
-    if (!res.ok) {
+      if (!res.ok) {
+        toast.error("Unable to load lead details");
+        setLead(null);
+        return;
+      }
+
+      const json = await res.json();
+
+      setLead(json);
+
+      setRemarksDraft(json.remarks || "");
+
+      setPaymentDraft({
+        payment_status: json.payment_status || "Unpaid",
+        total_fees: json.total_fees ?? 0,
+        paid_amount: json.paid_amount ?? 0,
+      });
+
+      // ✅ AUTO SET REF ID = CANDIDATE ID
+      setMessageDraft((prev) => ({
+        ...prev,
+        ref_id: String(json.lead_code || json.id)
+      }));
+
+      await Promise.all([fetchRemarkMessages(), fetchDomainStaff()]);
+
+    } catch {
       toast.error("Unable to load lead details");
       setLead(null);
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    const json = await res.json();
-
-    setLead(json);
-
-    setRemarksDraft(json.remarks || "");
-
-    setPaymentDraft({
-      payment_status: json.payment_status || "Unpaid",
-      total_fees: json.total_fees ?? 0,
-      paid_amount: json.paid_amount ?? 0,
-    });
-
-    // ✅ AUTO SET REF ID = CANDIDATE ID
-  setMessageDraft((prev) => ({
-  ...prev,
-  ref_id: String(json.lead_code || json.id)
-}));
-
-    await Promise.all([fetchRemarkMessages(), fetchDomainStaff()]);
-
-  } catch {
-    toast.error("Unable to load lead details");
-    setLead(null);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchLead();
@@ -178,32 +179,32 @@ const [showHistory,setShowHistory] = useState(false);
 
   const openHistory = async (messageId) => {
 
-  try {
+    try {
 
-    const res = await fetch(
-      `${API_BASE_URL_PORTAL}/api/leads/remark-history/${messageId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`
+      const res = await fetch(
+        `${API_BASE_URL_PORTAL}/api/leads/remark-history/${messageId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`
+          }
         }
-      }
-    );
+      );
 
-    if (!res.ok) {
-      throw new Error("History not found");
+      if (!res.ok) {
+        throw new Error("History not found");
+      }
+
+      const json = await res.json();
+
+      setHistoryData(json);
+      setShowHistory(true);
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load history");
     }
 
-    const json = await res.json();
-
-    setHistoryData(json);
-    setShowHistory(true);
-
-  } catch (err) {
-    console.error(err);
-    toast.error("Failed to load history");
-  }
-
-};
+  };
 
 
   const toggleRecipient = (staffId) => {
@@ -393,8 +394,8 @@ const [showHistory,setShowHistory] = useState(false);
   }
 
   const visibleMessages = showAllMessages
-  ? remarkMessages
-  : remarkMessages.slice(0, 3);
+    ? remarkMessages
+    : remarkMessages.slice(0, 3);
 
   return (
     <div className="space-y-4">
@@ -430,7 +431,7 @@ const [showHistory,setShowHistory] = useState(false);
           onChange={(e) => setRemarksDraft(e.target.value)}
           className="w-full min-h-[100px] p-3 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 ring-blue-500/20"
         />
-       
+
         <button
           onClick={saveRemarks}
           className="px-3 py-2 text-[10px] font-black rounded-lg bg-blue-600 text-white hover:bg-blue-700"
@@ -506,8 +507,8 @@ const [showHistory,setShowHistory] = useState(false);
                 <th className="p-3">Subject</th>
                 <th className="p-3">Description</th>
                 <th className="p-3">Attachment</th>
-<th className="p-3">Created</th>
-<th className="p-3">Last Modified</th>
+                <th className="p-3">Created</th>
+                <th className="p-3">Last Modified</th>
                 <th className="p-3">Mail</th>
                 <th className="p-3">Actions</th>
               </tr>
@@ -524,50 +525,50 @@ const [showHistory,setShowHistory] = useState(false);
                     <td className="p-3 font-semibold text-slate-700">{m.subject}</td>
                     <td className="p-3 text-slate-600 whitespace-pre-wrap">{m.description}</td>
                     <td className="p-3">
-  {m.attachment_base64 ? (
+                      {m.attachment_base64 ? (
 
-    m.attachment_type?.startsWith("image") ? (
+                        m.attachment_type?.startsWith("image") ? (
 
-      <img
-        src={m.attachment_base64}
-        alt={m.attachment_name}
-        className="w-16 h-16 object-cover rounded border cursor-pointer"
-        onClick={() => window.open(m.attachment_base64, "_blank")}
-      />
+                          <img
+                            src={m.attachment_base64}
+                            alt={m.attachment_name}
+                            className="w-16 h-16 object-cover rounded border cursor-pointer"
+                            onClick={() => window.open(m.attachment_base64, "_blank")}
+                          />
 
-    ) : m.attachment_type === "application/pdf" ? (
+                        ) : m.attachment_type === "application/pdf" ? (
 
-      <a
-        href={m.attachment_base64}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-red-600 font-bold text-xs"
-      >
-        📄 View PDF
-      </a>
+                          <a
+                            href={m.attachment_base64}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-red-600 font-bold text-xs"
+                          >
+                            📄 View PDF
+                          </a>
 
-    ) : (
+                        ) : (
 
-      <a
-        href={m.attachment_base64}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 underline text-xs"
-      >
-        Download
-      </a>
+                          <a
+                            href={m.attachment_base64}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 underline text-xs"
+                          >
+                            Download
+                          </a>
 
-    )
+                        )
 
-  ) : "-"}
-</td>
-<td className="p-3 text-slate-500">
-  {new Date(m.created_at).toLocaleString()}
-</td>
+                      ) : "-"}
+                    </td>
+                    <td className="p-3 text-slate-500">
+                      {new Date(m.created_at).toLocaleString()}
+                    </td>
 
-<td className="p-3 text-slate-500">
-  {m.updated_at ? new Date(m.updated_at).toLocaleString() : "-"}
-</td>                    <td className="p-3">
+                    <td className="p-3 text-slate-500">
+                      {m.updated_at ? new Date(m.updated_at).toLocaleString() : "-"}
+                    </td>                    <td className="p-3">
                       <span className={`px-2 py-1 rounded text-[10px] font-black ${m.sent_status === "SENT" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                         {m.sent_status}
                       </span>
@@ -586,29 +587,29 @@ const [showHistory,setShowHistory] = useState(false);
                         Delete
                       </button>
                       <button
-  onClick={() => openHistory(m.id)}
-  className="mr-2 px-2 py-1 text-[10px] ml-2 font-black rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
->
-  History
-</button>
+                        onClick={() => openHistory(m.id)}
+                        className="mr-2 px-2 py-1 text-[10px] ml-2 font-black rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                      >
+                        History
+                      </button>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
-          
+
         </div>
         {remarkMessages.length > 3 && (
-  <div className="flex justify-end mt-3">
-    <button
-      onClick={() => setShowAllMessages(!showAllMessages)}
-      className="px-4 py-1 text-[10px] font-black rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"
-    >
-      {showAllMessages ? "Show Less" : `Show All (${remarkMessages.length})`}
-    </button>
-  </div>
-)}
+          <div className="flex justify-end mt-3">
+            <button
+              onClick={() => setShowAllMessages(!showAllMessages)}
+              className="px-4 py-1 text-[10px] font-black rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"
+            >
+              {showAllMessages ? "Show Less" : `Show All (${remarkMessages.length})`}
+            </button>
+          </div>
+        )}
 
         {!!lead.remarks?.trim() && (
           <button
@@ -652,39 +653,39 @@ const [showHistory,setShowHistory] = useState(false);
             />
 
             <div>
-  <p className="text-[10px] font-black uppercase text-slate-400 mb-1">
-    Attachment (Optional)
-  </p>
+              <p className="text-[10px] font-black uppercase text-slate-400 mb-1">
+                Attachment (Optional)
+              </p>
 
-  <input
-    type="file"
-    accept="image/*,.pdf"
-   onChange={(e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (!file) return;
 
-  const reader = new FileReader();
+                  const reader = new FileReader();
 
-  reader.onload = () => {
-    setMessageDraft((prev) => ({
-      ...prev,
-      attachment: reader.result, // base64
-      attachmentName: file.name,
-      attachmentType: file.type
-    }));
-  };
+                  reader.onload = () => {
+                    setMessageDraft((prev) => ({
+                      ...prev,
+                      attachment: reader.result, // base64
+                      attachmentName: file.name,
+                      attachmentType: file.type
+                    }));
+                  };
 
-  reader.readAsDataURL(file);
-}}
-    className="text-xs border border-slate-200 rounded-lg p-2 w-full"
-  />
+                  reader.readAsDataURL(file);
+                }}
+                className="text-xs border border-slate-200 rounded-lg p-2 w-full"
+              />
 
-  {messageDraft.attachment && (
-    <p className="text-[10px] text-green-600 mt-1 font-semibold">
-Selected: {messageDraft.attachmentName}
-    </p>
-  )}
-</div>
+              {messageDraft.attachment && (
+                <p className="text-[10px] text-green-600 mt-1 font-semibold">
+                  Selected: {messageDraft.attachmentName}
+                </p>
+              )}
+            </div>
 
             <div className="border border-slate-200 rounded-lg overflow-x-auto bg-white">
               <table className="w-full text-xs">
@@ -711,20 +712,18 @@ Selected: {messageDraft.attachmentName}
                           <button
                             type="button"
                             onClick={() => toggleRecipient(s.id)}
-                            className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors ${
-                              messageDraft.recipientUserIds.includes(Number(s.id))
+                            className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors ${messageDraft.recipientUserIds.includes(Number(s.id))
                                 ? "bg-emerald-500"
                                 : "bg-slate-300"
-                            }`}
+                              }`}
                             aria-label={`Toggle mail send for ${s.name || "user"}`}
                             title={messageDraft.recipientUserIds.includes(Number(s.id)) ? "ON" : "OFF"}
                           >
                             <span
-                              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                                messageDraft.recipientUserIds.includes(Number(s.id))
+                              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${messageDraft.recipientUserIds.includes(Number(s.id))
                                   ? "translate-x-6"
                                   : "translate-x-1"
-                              }`}
+                                }`}
                             />
                             <span className="sr-only">
                               {messageDraft.recipientUserIds.includes(Number(s.id)) ? "ON" : "OFF"}
@@ -775,81 +774,81 @@ Selected: {messageDraft.attachmentName}
         )}
       </div>
 
-     {showHistory && (
-      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-        <div className="bg-white rounded-xl w-[700px] max-h-[80vh] overflow-auto p-5">
+      {showHistory && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-[700px] max-h-[80vh] overflow-auto p-5">
 
-          <div className="flex justify-between mb-4">
-            <h3 className="font-bold text-lg">Message History</h3>
+            <div className="flex justify-between mb-4">
+              <h3 className="font-bold text-lg">Message History</h3>
 
-            <button
-              onClick={() => setShowHistory(false)}
-              className="text-red-500 font-bold"
-            >
-              Close
-            </button>
-          </div>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="text-red-500 font-bold"
+              >
+                Close
+              </button>
+            </div>
 
-          <table className="w-full text-xs border">
-            <thead className="bg-slate-100">
-              <tr>
-                <th className="p-2">Subject</th>
-                <th className="p-2">Description</th>
-                <th className="p-2">Attachment</th>
-                <th className="p-2">Edited By</th>
-                <th className="p-2">Edited At</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {historyData.length === 0 ? (
+            <table className="w-full text-xs border">
+              <thead className="bg-slate-100">
                 <tr>
-                  <td colSpan="4" className="p-3 text-center text-slate-400">
-                    No history available
-                  </td>
+                  <th className="p-2">Subject</th>
+                  <th className="p-2">Description</th>
+                  <th className="p-2">Attachment</th>
+                  <th className="p-2">Edited By</th>
+                  <th className="p-2">Edited At</th>
                 </tr>
-              ) : (
-                historyData.map((h) => (
-                  <tr key={h.id} className="border-t">
-                    <td className="p-2">{h.subject}</td>
-                    <td className="p-2 whitespace-pre-wrap">{h.description}</td>
-                    <td className="p-2">
-                      {h.attachment_base64 ? (
-                        h.attachment_type?.startsWith("image") ? (
-                          <img
-                            src={h.attachment_base64}
-                            alt={h.attachment_name}
-                            className="w-12 h-12 object-cover rounded border cursor-pointer"
-                            onClick={() => window.open(h.attachment_base64, "_blank")}
-                          />
-                        ) : h.attachment_type === "application/pdf" ? (
-                          <a href={h.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-red-600 font-bold text-[10px]">
-                            📄 PDF
-                          </a>
-                        ) : (
-                          <a href={h.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-[10px]">
-                            Download
-                          </a>
-                        )
-                      ) : "-"}
-                    </td>
-                    <td className="p-2">{h.edited_by}</td>
-                    <td className="p-2">
-                      {new Date(h.edited_at).toLocaleString()}
+              </thead>
+
+              <tbody>
+                {historyData.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" className="p-3 text-center text-slate-400">
+                      No history available
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  historyData.map((h) => (
+                    <tr key={h.id} className="border-t">
+                      <td className="p-2">{h.subject}</td>
+                      <td className="p-2 whitespace-pre-wrap">{h.description}</td>
+                      <td className="p-2">
+                        {h.attachment_base64 ? (
+                          h.attachment_type?.startsWith("image") ? (
+                            <img
+                              src={h.attachment_base64}
+                              alt={h.attachment_name}
+                              className="w-12 h-12 object-cover rounded border cursor-pointer"
+                              onClick={() => window.open(h.attachment_base64, "_blank")}
+                            />
+                          ) : h.attachment_type === "application/pdf" ? (
+                            <a href={h.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-red-600 font-bold text-[10px]">
+                              📄 PDF
+                            </a>
+                          ) : (
+                            <a href={h.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-[10px]">
+                              Download
+                            </a>
+                          )
+                        ) : "-"}
+                      </td>
+                      <td className="p-2">{h.edited_by}</td>
+                      <td className="p-2">
+                        {new Date(h.edited_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
 
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
-  </div>
-);
-   
+    </div>
+  );
+
 };
 
 const InfoRow = ({ label, value }) => (

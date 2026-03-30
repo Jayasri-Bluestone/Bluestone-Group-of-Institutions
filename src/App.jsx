@@ -53,8 +53,10 @@ import LiveFeedManager from './components/Admin Panel/Layout/Notification';
 import LiveFeedCalendar from './components/Admin Panel/Layout/LiveFeedCalendar';
 import LoginPage from './components/Admin Panel/Login/Login';
 import Profile from './components/Admin Panel/Sidebar/Profile';
+import UserEfficiency from './components/Admin Panel/Sidebar/UserEfficiency';
+import DeletedLeads from './components/Admin Panel/Sidebar/DeletedLeads';
 
-import { API_BASE_URL } from './apiConfig';
+import { API_BASE_URL, API_BASE_URL_PORTAL } from './apiConfig';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -142,13 +144,37 @@ export default function App() {
 
   useEffect(() => {
     const timer = setTimeout(() => setIsInitialLoading(false), 700);
-    return () => clearTimeout(timer);
+
+    // --- Global CRM Activity Tracking ---
+    let lastPing = 0;
+    const handleActivity = () => {
+      const now = Date.now();
+      const token = localStorage.getItem('token');
+      // Only ping if we have a token (user logged in) and it's been >= 60 seconds
+      if (now - lastPing >= 60000 && token) {
+        lastPing = now;
+        fetch(`${API_BASE_URL_PORTAL}/api/auth/ping`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }).catch(() => { });
+      }
+    };
+
+    document.addEventListener("click", handleActivity);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("click", handleActivity);
+    };
   }, []);
 
   const getTier = (user) => {
     if (user?.tier) return user.tier;
-    if (['Main Admin', 'MD', 'GM'].includes(user?.role)) return 'SUPER_ADMIN';
-    if (['TL', 'Coordinator', 'Head'].includes(user?.role)) return 'ADMIN';
+    const r = user?.role || '';
+    if (['Main Admin', 'MD', 'GM', 'Super Admin'].includes(r)) return 'SUPER_ADMIN';
+    if (['TL', 'Coordinator', 'Head', 'Admin'].includes(r)) return 'ADMIN';
     return 'STAFF';
   };
 
@@ -175,10 +201,10 @@ export default function App() {
   return (
     <Router>
       <ScrollToTop />
-      <Toaster 
-        position="top-center" 
-        reverseOrder={false} 
-        toastOptions={{ 
+      <Toaster
+        position="top-center"
+        reverseOrder={false}
+        toastOptions={{
           duration: 2000,
           success: {
             style: {
@@ -200,9 +226,9 @@ export default function App() {
               secondary: '#dc2626',
             },
           },
-        }} 
+        }}
       />
-      
+
       <Routes>
         {/* --- 1. PUBLIC WEBSITE ROUTES --- */}
         <Route element={<PublicLayout />}>
@@ -210,7 +236,7 @@ export default function App() {
             <>
               <Hero />
               <BusinessFocus />
-              <AboutBluestone/>
+              <AboutBluestone />
               <OurPeople />
               <Contact />
               <Logos />
@@ -218,7 +244,7 @@ export default function App() {
           } />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/gallery" element={<GalleryPage />} />
-          <Route path="/contact" element={<Contact/>} />
+          <Route path="/contact" element={<Contact />} />
           <Route path="/career" element={<CareersPage jobs={jobs} />} />
           <Route path="/international-preschool" element={<InternationalPreschool />} />
           <Route path="/overseas-consulting" element={<OverseasConsulting />} />
@@ -229,7 +255,7 @@ export default function App() {
           <Route path="/language-hub" element={<LanguageHub />} />
           <Route path="/business-ideas" element={<BusinessIdeas />} />
           <Route path="/other-services" element={<OtherServices />} />
-          <Route path="/privacy-policy" element={<PrivacyPolicy />} /> 
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         </Route>
 
         {/* --- 2. AUTHENTICATION PAGES --- */}
@@ -280,8 +306,8 @@ export default function App() {
             {/* BGI route: Super Admin, Admin, or Staff with multiple domains */}
             {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN' ||
               (getTier(auth.user) === 'STAFF' && (auth.user?.domain || '').split(',').filter(Boolean).length > 1)) && (
-              <Route path="bgi/:view" element={<BGILeads user={auth.user} />} />
-            )}
+                <Route path="bgi/:view" element={<BGILeads user={auth.user} />} />
+              )}
 
             {/* Role Restricted Portal Routes */}
             {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN') && (
@@ -295,6 +321,8 @@ export default function App() {
               <>
                 <Route path="user-management" element={<UserManagement user={auth.user} />} />
                 <Route path="master" element={<MasterManagement user={auth.user} />} />
+                <Route path="efficiency" element={<UserEfficiency user={auth.user} />} />
+                <Route path="deleted-enquiries" element={<DeletedLeads user={auth.user} />} />
               </>
             )}
             {getTier(auth.user) === 'ADMIN' && (

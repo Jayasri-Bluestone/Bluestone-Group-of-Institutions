@@ -1,15 +1,14 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users, PhoneCall, GraduationCap, XCircle,
     AlertCircle,
-    Calendar, Filter, RefreshCcw
+    Calendar, Filter, RefreshCcw,
+    ChevronUp, ChevronDown
 } from 'lucide-react';
 import LoadingScreen from '../Layout/LoadingScreen';
 import Pagination from '../Layout/Pagination';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
-
-
 
 const Dashboard = ({ user }) => {
     const navigate = useNavigate();
@@ -39,8 +38,9 @@ const Dashboard = ({ user }) => {
 
     const getTier = (u) => {
         if (u?.tier) return u.tier;
-        if (['Main Admin', 'MD', 'GM'].includes(u?.role)) return 'SUPER_ADMIN';
-        if (['TL', 'Coordinator', 'Head'].includes(u?.role)) return 'ADMIN';
+        const r = u?.role || '';
+        if (['Main Admin', 'MD', 'GM', 'Super Admin'].includes(r)) return 'SUPER_ADMIN';
+        if (['TL', 'Coordinator', 'Head', 'Admin'].includes(r)) return 'ADMIN';
         return 'STAFF';
     };
     const isSuperAdmin = getTier(user) === 'SUPER_ADMIN';
@@ -134,7 +134,6 @@ const Dashboard = ({ user }) => {
         } catch (err) { console.error("Fetch Error:", err); }
     }, []);
 
-    // ... fetchMetric and Domain useEffect remain the same as your previous version ...
     useEffect(() => {
         const fetchDomains = async () => {
             try {
@@ -444,16 +443,33 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
         return searchable.includes(q);
     });
 
-    console.log("Leads Data:", safeData);
-    console.log("Search:", searchTerm);
+    const [sortBy, setSortBy] = useState('student_name');
+    const [sortOrder, setSortOrder] = useState('asc');
 
-    const totalPages = Math.max(Math.ceil(filteredData.length / pageSize), 1);
+    const sortedData = useMemo(() => {
+        return [...filteredData].sort((a, b) => {
+            let aVal = a[sortBy];
+            let bVal = b[sortBy];
+            if (sortBy === 'created_at') {
+                aVal = new Date(aVal || 0);
+                bVal = new Date(bVal || 0);
+            } else if (typeof aVal === 'string') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+            if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [filteredData, sortBy, sortOrder]);
+
+    const totalPages = Math.max(Math.ceil(sortedData.length / pageSize), 1);
     const paginatedData = showAllRows
-        ? filteredData
-        : filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+        ? sortedData
+        : sortedData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     const enableVerticalScroll =
-        (showAllRows && filteredData.length > 5) ||
+        (showAllRows && sortedData.length > 5) ||
         (!showAllRows && pageSize > 5 && paginatedData.length > 5);
 
     useEffect(() => {
@@ -513,14 +529,14 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
             >
                 <table className="w-full border-collapse">
                     <thead>
-                        <tr className="bg-slate-50/50 border-b border-slate-100">
-                            <th className="text-left py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Student</th>
-                            <th className="text-left py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact Details</th>
-                            <th className="text-center py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                        <tr className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">
+                            <SortHeader label="Student" sortKey="student_name" sortBy={sortBy} sortOrder={sortOrder} setSortBy={setSortBy} setSortOrder={setSortOrder} />
+                            <th className="py-3 px-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact</th>
+                            <SortHeader label="Status" sortKey="status" sortBy={sortBy} sortOrder={sortOrder} setSortBy={setSortBy} setSortOrder={setSortOrder} className="text-center" />
                             {showRemarks && (
-                                <th className="text-left py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Remarks</th>
+                                <SortHeader label="Remarks" sortKey="remarks" sortBy={sortBy} sortOrder={sortOrder} setSortBy={setSortBy} setSortOrder={setSortOrder} />
                             )}
-                            <th className="text-right py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned</th>
+                            <th className="py-3 px-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -609,6 +625,29 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
     );
 };
 
+const SortHeader = ({ label, sortKey, sortBy, sortOrder, setSortBy, setSortOrder, className = "" }) => {
+    const isActive = sortBy === sortKey;
+    return (
+        <th
+            className={`py-3 px-4 cursor-pointer hover:bg-slate-100/50 transition-colors ${className}`}
+            onClick={() => {
+                if (isActive) {
+                    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                } else {
+                    setSortBy(sortKey);
+                    setSortOrder('desc');
+                }
+            }}
+        >
+            <div className={`flex items-center gap-1.5 ${className.includes('center') ? 'justify-center' : className.includes('right') ? 'justify-end' : 'justify-start'}`}>
+                {label}
+                <div className="flex flex-col -gap-1">
+                    <ChevronUp size={10} className={isActive && sortOrder === 'asc' ? "text-blue-600" : "text-slate-300"} />
+                    <ChevronDown size={10} className={isActive && sortOrder === 'desc' ? "text-blue-600" : "text-slate-300"} />
+                </div>
+            </div>
+        </th>
+    );
+};
+
 export default Dashboard;
-
-

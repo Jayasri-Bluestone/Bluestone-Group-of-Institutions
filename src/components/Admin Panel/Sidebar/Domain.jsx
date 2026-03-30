@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { 
-  RefreshCcw, History, Mail, Phone, Calendar, 
-  UserCheck, Search, Filter, X, 
-  Edit, Eye, Trash2,
-  Delete,
-  DeleteIcon
+import {
+    RefreshCcw, History, Mail, Phone, Calendar,
+    UserCheck, Search, Filter, X,
+    Edit, Eye, Trash2,
+    Delete,
+    DeleteIcon,
+    ChevronUp,
+    ChevronDown
 } from 'lucide-react';
 import Pagination from '../Layout/Pagination';
 import LoadingScreen from '../Layout/LoadingScreen';
@@ -18,8 +20,9 @@ import { BiExport } from 'react-icons/bi';
 const DomainPage = ({ domain, user }) => {
     const getTier = (u) => {
         if (u?.tier) return u.tier;
-        if (['Main Admin', 'MD', 'GM'].includes(u?.role)) return 'SUPER_ADMIN';
-        if (['TL', 'Coordinator', 'Head'].includes(u?.role)) return 'ADMIN';
+        const r = u?.role || '';
+        if (['Main Admin', 'MD', 'GM', 'Super Admin'].includes(r)) return 'SUPER_ADMIN';
+        if (['TL', 'Coordinator', 'Head', 'Admin'].includes(r)) return 'ADMIN';
         return 'STAFF';
     };
     const getSlug = (name = '') => {
@@ -45,9 +48,9 @@ const DomainPage = ({ domain, user }) => {
     const hasFocusedLeadRef = useRef(false);
     const requestSeqRef = useRef(0);
     const focusLeadId = location.state?.focusLeadId || null;
-    const [data, setData] = useState({ 
-        leads: [], 
-        totalPages: 1, 
+    const [data, setData] = useState({
+        leads: [],
+        totalPages: 1,
         page: 1,
         total: 0
     });
@@ -68,162 +71,185 @@ const DomainPage = ({ domain, user }) => {
     const [masterData, setMasterData] = useState([]);
     const [selectedLeadIds, setSelectedLeadIds] = useState([]);
     const [bulkAssignStaff, setBulkAssignStaff] = useState("");
-const [categoryFilter, setCategoryFilter] = useState('All');
-const [interestFilter, setInterestFilter] = useState('All');
-const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
-   const fetchDomainData = useCallback(async (page = 1, limit = pageSize, options = {}) => {
-    const { silent = false } = options;
-    const requestId = ++requestSeqRef.current;
-    if (!silent) setLoading(true);
-    try {
-        const token = localStorage.getItem('token');
-        const getUserDomains = (domainStr) => {
-            if (!domainStr) return [];
-            return domainStr.split(',').map(d => d.trim()).filter(Boolean);
-        };
-        const userDomainsList = getUserDomains(user?.domain);
-        // Normalize a domain name for comparison (lowercase, strip "Bluestone " prefix)
-       // NEW: normalized full-name comparison (case-insensitive, alias-aware)
-const normalizeName = (n = '') => n.toLowerCase().replace(/^bluestone /, '');
-const hasAccess = isSuperAdmin || userDomainsList.some(d => 
-    normalizeName(d) === normalizeName(domain) // "overseas" === "overseas" ✅
-);
+    const [categoryFilter, setCategoryFilter] = useState('All');
+    const [interestFilter, setInterestFilter] = useState('All');
+    const [sortBy, setSortBy] = useState('created_at');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
+    const fetchDomainData = useCallback(async (page = 1, limit = pageSize, options = {}) => {
+        const { silent = false } = options;
+        const requestId = ++requestSeqRef.current;
+        if (!silent) setLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            const getUserDomains = (domainStr) => {
+                if (!domainStr) return [];
+                return domainStr.split(',').map(d => d.trim()).filter(Boolean);
+            };
+            const userDomainsList = getUserDomains(user?.domain);
+            // Normalize a domain name for comparison (lowercase, strip "Bluestone " prefix)
+            // NEW: normalized full-name comparison (case-insensitive, alias-aware)
+            const normalizeName = (n = '') => n.toLowerCase().replace(/^bluestone /, '');
+            const hasAccess = isSuperAdmin || userDomainsList.some(d =>
+                normalizeName(d) === normalizeName(domain) // "overseas" === "overseas" ✅
+            );
 
-        const finalDomain = hasAccess
-            ? domain
-            : (userDomainsList.length > 0 ? userDomainsList[0] : user.domain);
-        const isWaitingView = viewMode === 'waiting';
-        const isPaymentView = viewMode === 'payment';
-        if (isWaitingView || isPaymentView) {
+            const finalDomain = hasAccess
+                ? domain
+                : (userDomainsList.length > 0 ? userDomainsList[0] : user.domain);
+            const isWaitingView = viewMode === 'waiting';
+            const isPaymentView = viewMode === 'payment';
+            if (isWaitingView || isPaymentView) {
+                const params = new URLSearchParams({
+                    page: '1',
+                    limit: '5000'
+                });
+                if (categoryFilter !== 'All') params.set('category', categoryFilter);
+                if (interestFilter !== 'All') params.set('interest', interestFilter);
+                if (searchTerm.trim()) params.set('search', searchTerm.trim());
+                const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
+                const res = await fetch(url, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.status === 403) {
+                    console.error("Access denied");
+                    return;
+                }
+                const result = await res.json();
+                if (!res.ok) return;
+                let rows = Array.isArray(result.leads) ? result.leads : [];
+                rows = rows.filter((lead) => {
+                    const st = String(lead.status || '').trim().toLowerCase();
+                    const ps = String(lead.payment_status || '').trim().toLowerCase();
+                    if (isWaitingView) {
+                        const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
+                        return st.includes('waiting') || !knownNonWaiting.includes(st);
+                    }
+                    if (isPaymentView) {
+                        return ps === 'paid' || ps === 'partially paid';
+                    }
+                    return true;
+                });
+
+                // Client-side sorting for waiting/payment views
+                rows.sort((a, b) => {
+                    let aVal = a[sortBy === 'student_name' ? 'student_name' : sortBy];
+                    let bVal = b[sortBy === 'student_name' ? 'student_name' : sortBy];
+
+                    if (sortBy === 'created_at') {
+                        aVal = new Date(aVal || 0);
+                        bVal = new Date(bVal || 0);
+                    } else if (typeof aVal === 'string') {
+                        aVal = aVal.toLowerCase();
+                        bVal = bVal.toLowerCase();
+                    }
+
+                    if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+                    return 0;
+                });
+
+                const total = rows.length;
+                const safeLimit = Math.max(Number(limit) || 10, 1);
+                const totalPages = Math.max(Math.ceil(total / safeLimit), 1);
+                const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+                const start = (safePage - 1) * safeLimit;
+                const pagedRows = rows.slice(start, start + safeLimit);
+                if (requestId !== requestSeqRef.current) return;
+                setData({
+                    leads: pagedRows,
+                    totalPages,
+                    page: safePage,
+                    total
+                });
+                return;
+            }
             const params = new URLSearchParams({
-                page: '1',
-                limit: '5000'
+                page: String(page),
+                limit: String(limit),
+                sortBy,
+                sortOrder
             });
             if (categoryFilter !== 'All') params.set('category', categoryFilter);
             if (interestFilter !== 'All') params.set('interest', interestFilter);
+            if (statusFilter !== 'All') {
+                params.set('status', statusFilter);
+            }
             if (searchTerm.trim()) params.set('search', searchTerm.trim());
             const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.status === 403) {
-                console.error("Access denied");
+                console.error("❌ Access denied");
                 return;
             }
             const result = await res.json();
-            if (!res.ok) return;
-            let rows = Array.isArray(result.leads) ? result.leads : [];
-            rows = rows.filter((lead) => {
-                const st = String(lead.status || '').trim().toLowerCase();
-                const ps = String(lead.payment_status || '').trim().toLowerCase();
-                if (isWaitingView) {
-                    const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
-                    return st.includes('waiting') || !knownNonWaiting.includes(st);
-                }
-                if (isPaymentView) {
-                    return ps === 'paid' || ps === 'partially paid';
-                }
-                return true;
-            });
-            const total = rows.length;
-            const safeLimit = Math.max(Number(limit) || 10, 1);
-            const totalPages = Math.max(Math.ceil(total / safeLimit), 1);
-            const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
-            const start = (safePage - 1) * safeLimit;
-            const pagedRows = rows.slice(start, start + safeLimit);
-            if (requestId !== requestSeqRef.current) return;
-            setData({
-                leads: pagedRows,
-                totalPages,
-                page: safePage,
-                total
-            });
-            return;
+            if (res.ok) {
+                const pagination = result.pagination || {};
+                if (requestId !== requestSeqRef.current) return;
+                setData({
+                    leads: result.leads || [],
+                    totalPages: pagination.totalPages || 1,
+                    page: pagination.currentPage || page,
+                    total: pagination.total || 0
+                });
+            }
+        } catch (err) {
+            console.error("Fetch failed:", err);
+        } finally {
+            if (requestId === requestSeqRef.current) setLoading(false);
         }
-        const params = new URLSearchParams({
-            page: String(page),
-            limit: String(limit)
-        });
-        if (categoryFilter !== 'All') params.set('category', categoryFilter);
-        if (interestFilter !== 'All') params.set('interest', interestFilter);
-        if (statusFilter !== 'All') {
-            params.set('status', statusFilter);
+    }, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm, viewMode, sortBy, sortOrder]);
+    useEffect(() => {
+        if (isSuperAdmin) return; // Super admin can access any domain
+        const getUserDomains = (domainStr) => {
+            if (!domainStr) return [];
+            return domainStr.split(',').map(d => d.trim()).filter(Boolean);
+        };
+        const userDomainsList = getUserDomains(user?.domain);
+        if (userDomainsList.length === 0) return;
+        // `domain` prop is a full name like "Bluestone Overseas"
+        // Compare using normalized names (lowercase, strip "Bluestone " prefix)
+        const normalizeName = (n = '') => String(n).toLowerCase().replace(/^bluestone\s+/, '');
+        const hasAccess = userDomainsList.some(d => normalizeName(d) === normalizeName(domain));
+        if (!hasAccess) {
+            // Redirect to the user's first assigned domain
+            const fallback = userDomainsList[0];
+            const fallbackSlug = getSlug(fallback);
+            navigate(`/portal/domain/${fallbackSlug}`, { replace: true });
         }
-        if (searchTerm.trim()) params.set('search', searchTerm.trim());
-        const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
-        const res = await fetch(url, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.status === 403) {
-            console.error("❌ Access denied");
-            return;
-        }
-        const result = await res.json();
-        if (res.ok) {
-            const pagination = result.pagination || {};
-            if (requestId !== requestSeqRef.current) return;
-            setData({
-                leads: result.leads || [],
-                totalPages: pagination.totalPages || 1,
-                page: pagination.currentPage || page,
-                total: pagination.total || 0
-            });
-        }
-    } catch (err) {
-        console.error("Fetch failed:", err);
-    } finally {
-        if (requestId === requestSeqRef.current) setLoading(false);
-    }
-}, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm, viewMode]);
-useEffect(() => {
-    if (isSuperAdmin) return; // Super admin can access any domain
-    const getUserDomains = (domainStr) => {
-        if (!domainStr) return [];
-        return domainStr.split(',').map(d => d.trim()).filter(Boolean);
-    };
-    const userDomainsList = getUserDomains(user?.domain);
-    if (userDomainsList.length === 0) return;
-    // `domain` prop is a full name like "Bluestone Overseas"
-    // Compare using normalized names (lowercase, strip "Bluestone " prefix)
-    const normalizeName = (n = '') => String(n).toLowerCase().replace(/^bluestone\s+/, '');
-    const hasAccess = userDomainsList.some(d => normalizeName(d) === normalizeName(domain));
-    if (!hasAccess) {
-        // Redirect to the user's first assigned domain
-        const fallback = userDomainsList[0];
-        const fallbackSlug = getSlug(fallback);
-        navigate(`/portal/domain/${fallbackSlug}`, { replace: true });
-    }
-}, [domain, user, navigate, isSuperAdmin]);
-const fetchUsers = useCallback(async () => {
-    if (!isAdminTier) return;
-    try {
-        const domainParam = encodeURIComponent(domain || '');
-        const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
-        
-        const [staffRes, tlRes] = await Promise.all([
-            fetch(`${API_BASE_URL_PORTAL}/api/staff-list?domain=${domainParam}`, { headers }),
-            fetch(`${API_BASE_URL_PORTAL}/api/tl-list?domain=${domainParam}`, { headers })
-        ]);
+    }, [domain, user, navigate, isSuperAdmin]);
+    const fetchUsers = useCallback(async () => {
+        if (!isAdminTier) return;
+        try {
+            const domainParam = encodeURIComponent(domain || '');
+            const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
 
-        let combined = [];
-        if (staffRes.ok) {
-            const staff = await staffRes.json();
-            combined = [...combined, ...staff];
-        }
-        if (tlRes.ok) {
-            const tls = await tlRes.json();
-            combined = [...combined, ...tls];
-        }
+            const [staffRes, tlRes] = await Promise.all([
+                fetch(`${API_BASE_URL_PORTAL}/api/staff-list?domain=${domainParam}`, { headers }),
+                fetch(`${API_BASE_URL_PORTAL}/api/tl-list?domain=${domainParam}`, { headers })
+            ]);
 
-        // Filter out self and ensure unique IDs
-        const unique = Array.from(new Map(combined.map(u => [u.id, u])).values())
-            .filter(u => u.id !== user.id);
-            
-        setStaffList(unique);
-    } catch (err) { 
-        console.error(err); 
-    }
-}, [isAdminTier, domain, user.id]);
+            let combined = [];
+            if (staffRes.ok) {
+                const staff = await staffRes.json();
+                combined = [...combined, ...staff];
+            }
+            if (tlRes.ok) {
+                const tls = await tlRes.json();
+                combined = [...combined, ...tls];
+            }
+
+            // Filter out self and ensure unique IDs
+            const unique = Array.from(new Map(combined.map(u => [u.id, u])).values())
+                .filter(u => u.id !== user.id);
+
+            setStaffList(unique);
+        } catch (err) {
+            console.error(err);
+        }
+    }, [isAdminTier, domain, user.id]);
     useEffect(() => {
         fetchDomainData();
         fetchUsers();
@@ -234,14 +260,14 @@ const fetchUsers = useCallback(async () => {
         }, AUTO_REFRESH_MS);
         return () => clearInterval(timer);
     }, [fetchDomainData, data.page, pageSize]);
-const resetFilters = () => {
-    setSearchTerm('');
-    setStatusFilter('All');
-    setCategoryFilter('All');
-    setInterestFilter('All');
-    setPendingOnly(false);
-    setTodayOnly(false);
-};
+    const resetFilters = () => {
+        setSearchTerm('');
+        setStatusFilter('All');
+        setCategoryFilter('All');
+        setInterestFilter('All');
+        setPendingOnly(false);
+        setTodayOnly(false);
+    };
     const deleteLead = async (id) => {
         return deleteLeadById(id);
     };
@@ -282,9 +308,9 @@ const resetFilters = () => {
         try {
             const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${selectedLead.id}`, {
                 method: 'PUT',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify(selectedLead)
             });
@@ -307,7 +333,7 @@ const resetFilters = () => {
         const pendingQ = qp.get('pending');
         const todayQ = qp.get('today');
         const viewQ = qp.get('view');
-        
+
         const normalizedView = (viewQ || 'all').toLowerCase();
         setViewMode(normalizedView === 'pending' ? 'waiting' : normalizedView);
 
@@ -344,9 +370,9 @@ const resetFilters = () => {
         try {
             const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/status`, {
                 method: 'PUT',
-                headers: { 
-                    'Content-Type': 'application/json', 
-                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify({ leadId, status: newStatus })
             });
@@ -405,74 +431,74 @@ const resetFilters = () => {
         } catch (err) { console.error(err); }
     };
     const filteredLeads = data.leads.filter(lead => {
-    const q = searchTerm.toLowerCase();
-    const leadStatus = String(lead.status || '').trim().toLowerCase();
-    const leadPayment = String(lead.payment_status || '').trim().toLowerCase();
-    const matchesSearch =
-        lead.student_name.toLowerCase().includes(q) ||
-        lead.phone.includes(searchTerm) ||
-        (lead.email || '').toLowerCase().includes(q);
-    const normalizedStatusFilter = String(statusFilter || 'All').trim().toLowerCase();
-    const matchesStatus =
-        normalizedStatusFilter === 'all' || leadStatus === normalizedStatusFilter;
-    const matchesCategory =
-        categoryFilter === 'All' || lead.category === categoryFilter;
-    const matchesInterest =
-        interestFilter === 'All' || lead.interested_in === interestFilter;
-    const hasAssignedStaff = Boolean(lead.assigned_to || lead.assigned_to_name);
-    const isPendingLead = !hasAssignedStaff;
-    const matchesPending = !pendingOnly || isPendingLead;
-    const matchesToday = !todayOnly || (() => {
-        if (!lead.created_at) return false;
-        const leadDate = new Date(lead.created_at);
-        const now = new Date();
+        const q = searchTerm.toLowerCase();
+        const leadStatus = String(lead.status || '').trim().toLowerCase();
+        const leadPayment = String(lead.payment_status || '').trim().toLowerCase();
+        const matchesSearch =
+            lead.student_name.toLowerCase().includes(q) ||
+            lead.phone.includes(searchTerm) ||
+            (lead.email || '').toLowerCase().includes(q);
+        const normalizedStatusFilter = String(statusFilter || 'All').trim().toLowerCase();
+        const matchesStatus =
+            normalizedStatusFilter === 'all' || leadStatus === normalizedStatusFilter;
+        const matchesCategory =
+            categoryFilter === 'All' || lead.category === categoryFilter;
+        const matchesInterest =
+            interestFilter === 'All' || lead.interested_in === interestFilter;
+        const hasAssignedStaff = Boolean(lead.assigned_to || lead.assigned_to_name);
+        const isPendingLead = !hasAssignedStaff;
+        const matchesPending = !pendingOnly || isPendingLead;
+        const matchesToday = !todayOnly || (() => {
+            if (!lead.created_at) return false;
+            const leadDate = new Date(lead.created_at);
+            const now = new Date();
+            return (
+                leadDate.getFullYear() === now.getFullYear() &&
+                leadDate.getMonth() === now.getMonth() &&
+                leadDate.getDate() === now.getDate()
+            );
+        })();
+        const matchesViewMode = (() => {
+            if (viewMode === 'all') return leadStatus === 'new';
+            if (viewMode === 'lead-status') return leadStatus === 'follow up' || leadStatus === 'enrolled';
+            if (viewMode === 'waiting') {
+                const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
+                return leadStatus.includes('waiting') || !knownNonWaiting.includes(leadStatus);
+            }
+            if (viewMode === 'invalid') return leadStatus === 'closed';
+            if (viewMode === 'payment') {
+                return leadPayment === 'paid' || leadPayment === 'partially paid';
+            }
+            return true;
+        })();
         return (
-            leadDate.getFullYear() === now.getFullYear() &&
-            leadDate.getMonth() === now.getMonth() &&
-            leadDate.getDate() === now.getDate()
+            matchesSearch &&
+            matchesStatus &&
+            matchesCategory &&
+            matchesInterest &&
+            matchesPending &&
+            matchesToday &&
+            matchesViewMode
         );
-    })();
-    const matchesViewMode = (() => {
-        if (viewMode === 'all') return leadStatus === 'new';
-        if (viewMode === 'lead-status') return leadStatus === 'follow up' || leadStatus === 'enrolled';
-        if (viewMode === 'waiting') {
-            const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
-            return leadStatus.includes('waiting') || !knownNonWaiting.includes(leadStatus);
+    });
+
+    const fetchMaster = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`);
+            const json = await res.json();
+            setMasterData(json || []);
+        } catch (err) {
+            console.error("Master fetch failed", err);
         }
-        if (viewMode === 'invalid') return leadStatus === 'closed';
-        if (viewMode === 'payment') {
-            return leadPayment === 'paid' || leadPayment === 'partially paid';
-        }
-        return true;
-    })();
-    return (
-        matchesSearch &&
-        matchesStatus &&
-        matchesCategory &&
-        matchesInterest &&
-        matchesPending &&
-        matchesToday &&
-        matchesViewMode
+    }, []);
+    useEffect(() => {
+        fetchMaster();
+    }, [fetchMaster]);
+    const domainMaster = masterData.find(
+        d => d.name?.toLowerCase() === domain?.toLowerCase()
     );
-});
-   
-const fetchMaster = useCallback(async () => {
-    try {
-        const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/full-structure`);
-        const json = await res.json();
-        setMasterData(json || []);
-    } catch (err) {
-        console.error("Master fetch failed", err);
-    }
-}, []);
-useEffect(() => {
-    fetchMaster();
-}, [fetchMaster]);
-const domainMaster = masterData.find(
-    d => d.name?.toLowerCase() === domain?.toLowerCase()
-);
-const categories = domainMaster?.categories || [];
-const allValues = categories.flatMap(c => c.values || []);
+    const categories = domainMaster?.categories || [];
+    const allValues = categories.flatMap(c => c.values || []);
     const enableTableScroll =
         (pageSizeValue === 'all' && filteredLeads.length > 10) ||
         (pageSizeValue !== 'all' && Number(pageSizeValue) > 10);
@@ -550,8 +576,8 @@ const allValues = categories.flatMap(c => c.values || []);
             return;
         }
 
-        const selectedStaff = staffList.find(s => s.id.toString() === bulkAssignStaff) || 
-                             (bulkAssignStaff === user.id.toString() ? { id: user.id, name: user.name } : null);
+        const selectedStaff = staffList.find(s => s.id.toString() === bulkAssignStaff) ||
+            (bulkAssignStaff === user.id.toString() ? { id: user.id, name: user.name } : null);
 
         const confirmed = await confirmToast(
             `Assign ${selectedLeadIds.length} lead(s) to ${selectedStaff?.name || "selected staff"}?`,
@@ -563,9 +589,9 @@ const allValues = categories.flatMap(c => c.values || []);
         try {
             const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/bulk-assign`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json', 
-                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify({
                     leadIds: selectedLeadIds,
@@ -609,7 +635,7 @@ const allValues = categories.flatMap(c => c.values || []);
     if (loading && data.leads.length === 0) {
         return <LoadingScreen message={`Loading ${domain} leads...`} fullPage={false} />;
     }
-   
+
     const viewTitleMap = {
         all: 'All Enquiries',
         'lead-status': 'All Leads Status',
@@ -618,6 +644,33 @@ const allValues = categories.flatMap(c => c.values || []);
         invalid: 'All Invalid Enquiries',
     };
     const activeViewTitle = viewTitleMap[viewMode] || viewTitleMap.all;
+
+    const SortHeader = ({ label, sortKey, className = "" }) => {
+        const isActive = sortBy === sortKey;
+        return (
+            <th
+                className={`p-4 border-r border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors ${className}`}
+                onClick={() => {
+                    if (isActive) {
+                        setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                    } else {
+                        setSortBy(sortKey);
+                        setSortOrder('desc');
+                    }
+                    fetchDomainData(1);
+                }}
+            >
+                <div className="flex items-center gap-1.5">
+                    {label}
+                    <div className="flex flex-col -gap-1">
+                        <ChevronUp size={10} className={isActive && sortOrder === 'asc' ? "text-blue-600" : "text-slate-300"} />
+                        <ChevronDown size={10} className={isActive && sortOrder === 'desc' ? "text-blue-600" : "text-slate-300"} />
+                    </div>
+                </div>
+            </th>
+        );
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -628,7 +681,7 @@ const allValues = categories.flatMap(c => c.values || []);
                 <div className="flex flex-wrap items-center gap-2">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input 
+                        <input
                             type="text"
                             placeholder="Search current page..."
                             value={searchTerm}
@@ -642,40 +695,40 @@ const allValues = categories.flatMap(c => c.values || []);
                         )}
                     </div>
                     {/* CATEGORY FILTER */}
-<select
-    value={categoryFilter}
-    onChange={(e) => {
-        setCategoryFilter(e.target.value);
-        setInterestFilter('All');
-    }}
-    className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold"
->
-    <option value="All">All Categories</option>
-    {categories.map(cat => (
-        <option key={cat.id} value={cat.category_name}>
-            {cat.category_name}
-        </option>
-    ))}
-</select>
-{/* INTEREST FILTER */}
-<select
-    value={interestFilter}
-    onChange={(e) => setInterestFilter(e.target.value)}
-    className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold"
->
-    <option value="All">All Interests</option>
-    {categories
-        .filter(c => categoryFilter === 'All' || c.category_name === categoryFilter)
-        .flatMap(c => c.values || [])
-        .map(val => (
-            <option key={val.id} value={val.sub_value}>
-                {val.sub_value}
-            </option>
-        ))}
-</select>
+                    <select
+                        value={categoryFilter}
+                        onChange={(e) => {
+                            setCategoryFilter(e.target.value);
+                            setInterestFilter('All');
+                        }}
+                        className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold"
+                    >
+                        <option value="All">All Categories</option>
+                        {categories.map(cat => (
+                            <option key={cat.id} value={cat.category_name}>
+                                {cat.category_name}
+                            </option>
+                        ))}
+                    </select>
+                    {/* INTEREST FILTER */}
+                    <select
+                        value={interestFilter}
+                        onChange={(e) => setInterestFilter(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold"
+                    >
+                        <option value="All">All Interests</option>
+                        {categories
+                            .filter(c => categoryFilter === 'All' || c.category_name === categoryFilter)
+                            .flatMap(c => c.values || [])
+                            .map(val => (
+                                <option key={val.id} value={val.sub_value}>
+                                    {val.sub_value}
+                                </option>
+                            ))}
+                    </select>
                     <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                         <Filter size={14} className="text-slate-400" />
-                        <select 
+                        <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
                             className="bg-transparent text-xs font-bold text-slate-600 outline-none cursor-pointer"
@@ -689,13 +742,13 @@ const allValues = categories.flatMap(c => c.values || []);
                         </select>
                     </div>
                     <button
-    onClick={resetFilters}
-    className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs font-bold"
->
-    Reset
-</button>
-                    <button 
-                        onClick={() => fetchDomainData(data.page)} 
+                        onClick={resetFilters}
+                        className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs font-bold"
+                    >
+                        Reset
+                    </button>
+                    <button
+                        onClick={() => fetchDomainData(data.page)}
                         className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                     >
                         <RefreshCcw size={18} className={loading ? "animate-spin" : ""} />
@@ -705,7 +758,7 @@ const allValues = categories.flatMap(c => c.values || []);
             <div className="flex items-center justify-between mb-2 px-1">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     <span>Show</span>
-                    <select 
+                    <select
                         value={pageSizeValue}
                         onChange={(e) => handlePageSizeChange(e.target.value === 'all' ? 'all' : Number(e.target.value))}
                         className="bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20 cursor-pointer"
@@ -726,7 +779,7 @@ const allValues = categories.flatMap(c => c.values || []);
                         className="px-1.5 py-1.5 rounded-lg text-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                         title="Delete selected leads"
                     >
-                        <RiDeleteBin4Fill/> 
+                        <RiDeleteBin4Fill />
                     </button>
 
                     {selectedLeadIds.length > 0 && !isStaffTier && (
@@ -757,7 +810,7 @@ const allValues = categories.flatMap(c => c.values || []);
                         className="p-1.5 rounded-lg text-lg font-bold bg-slate-900 text-white hover:bg-slate-800 transition-colors"
                         title="Export Excel"
                     >
-                       <BiExport/>
+                        <BiExport />
                     </button>
                     <button
                         onClick={() => fetchDomainData(data.page, pageSize)}
@@ -784,15 +837,15 @@ const allValues = categories.flatMap(c => c.values || []);
                                         aria-label="Select all leads"
                                     />
                                 </th>
-                                <th className="p-4 border-r border-slate-100">Candidate</th>
-                                <th className="p-4 border-r border-slate-100">Phone</th>
-                                <th className="p-4 border-r border-slate-100">Category</th>
-                                <th className="p-4 border-r border-slate-100">Interest</th>
+                                <SortHeader label="Candidate" sortKey="student_name" />
+                                <SortHeader label="Phone" sortKey="phone" />
+                                <SortHeader label="Category" sortKey="category" />
+                                <SortHeader label="Interest" sortKey="interested_in" />
                                 <th className="p-4 border-r border-slate-100">
                                     {isStaffTier ? 'Assigned By' : 'Assigned To'}
                                 </th>
-                                <th className="p-4 border-r border-slate-100">Date</th>
-                                <th className="p-4 border-r border-slate-100">Status</th>
+                                <SortHeader label="Date" sortKey="created_at" />
+                                <SortHeader label="Status" sortKey="status" />
                                 <th className="p-4 text-center">Actions</th>
                             </tr>
                         </thead>
@@ -801,9 +854,8 @@ const allValues = categories.flatMap(c => c.values || []);
                                 <tr
                                     id={`lead-row-${lead.id}`}
                                     key={lead.id}
-                                    className={`hover:bg-blue-50/30 transition-colors whitespace-nowrap ${
-                                        focusLeadId === lead.id ? 'bg-blue-50/50 ring-1 ring-blue-200' : ''
-                                    }`}
+                                    className={`hover:bg-blue-50/30 transition-colors whitespace-nowrap ${focusLeadId === lead.id ? 'bg-blue-50/50 ring-1 ring-blue-200' : ''
+                                        }`}
                                 >
                                     <td className="p-4 border-r border-slate-50">
                                         <input
@@ -819,11 +871,11 @@ const allValues = categories.flatMap(c => c.values || []);
                                     </td>
                                     <td className="p-4 font-medium text-slate-600 border-r border-slate-50 text-xs">{lead.phone}</td>
                                     <td className="p-4 text-xs font-bold text-slate-60 border-slate-50 border-r">
-    {lead.category || '-'}
-</td>
-<td className="p-4 text-xs text-blue-600 font-bold border-slate-50 border-r">
-    {lead.interested_in || '-'}
-</td>
+                                        {lead.category || '-'}
+                                    </td>
+                                    <td className="p-4 text-xs text-blue-600 font-bold border-slate-50 border-r">
+                                        {lead.interested_in || '-'}
+                                    </td>
                                     <td className="p-4 border-r border-slate-50">
                                         {isStaffTier ? (
                                             <div className="flex items-center gap-2">
@@ -833,7 +885,7 @@ const allValues = categories.flatMap(c => c.values || []);
                                                 </span>
                                             </div>
                                         ) : (
-                                            <select 
+                                            <select
                                                 className="text-[11px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20"
                                                 value={lead.assigned_to || ""}
                                                 onChange={(e) => {
@@ -855,7 +907,7 @@ const allValues = categories.flatMap(c => c.values || []);
                                         {new Date(lead.created_at).toLocaleDateString('en-GB')}
                                     </td>
                                     <td className="p-4 border-r border-slate-50">
-                                        <select 
+                                        <select
                                             value={lead.status}
                                             onChange={(e) => updateStatus(lead.id, e.target.value, null, lead.student_name)}
                                             className={`text-[10px] font-black uppercase px-2 py-1 rounded border border-transparent outline-none cursor-pointer ${getStatusStyle(lead.status)}`}
@@ -883,14 +935,14 @@ const allValues = categories.flatMap(c => c.values || []);
                                             >
                                                 <History size={16} />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => handleEditLead(lead)}
                                                 className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-100"
                                                 title="Edit Lead"
                                             >
                                                 <Edit size={16} />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => deleteLead(lead.id)}
                                                 className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors border border-red-100"
                                                 title="Delete Lead"
@@ -904,12 +956,12 @@ const allValues = categories.flatMap(c => c.values || []);
                         </tbody>
                     </table>
                 </div>
-                <Pagination 
-                    stats={{ 
-                        currentPage: data.page, 
-                        totalPages: data.totalPages 
-                    }} 
-                    onPageChange={(newPage) => fetchDomainData(newPage, pageSize)} 
+                <Pagination
+                    stats={{
+                        currentPage: data.page,
+                        totalPages: data.totalPages
+                    }}
+                    onPageChange={(newPage) => fetchDomainData(newPage, pageSize)}
                     pageSize={pageSize}
                     pageSizeValue={pageSizeValue}
                     onPageSizeChange={handlePageSizeChange}
@@ -922,33 +974,33 @@ const allValues = categories.flatMap(c => c.values || []);
                     <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
                         <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
                             <h3 className="font-black text-slate-800 uppercase tracking-tight">Edit Lead Details</h3>
-                            <button onClick={() => setIsEditModalOpen(false)}><X size={20}/></button>
+                            <button onClick={() => setIsEditModalOpen(false)}><X size={20} /></button>
                         </div>
-                        
+
                         <div className="p-6 space-y-4">
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase">Student Name</label>
-                                <input 
+                                <input
                                     className="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 ring-blue-500/20"
                                     value={selectedLead.student_name}
-                                    onChange={(e) => setSelectedLead({...selectedLead, student_name: e.target.value})}
+                                    onChange={(e) => setSelectedLead({ ...selectedLead, student_name: e.target.value })}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-[10px] font-black text-slate-400 uppercase">Email</label>
-                                    <input 
+                                    <input
                                         className="w-full p-2 border rounded-lg text-sm"
                                         value={selectedLead.email}
-                                        onChange={(e) => setSelectedLead({...selectedLead, email: e.target.value})}
+                                        onChange={(e) => setSelectedLead({ ...selectedLead, email: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-black text-slate-400 uppercase">Phone</label>
-                                    <input 
+                                    <input
                                         className="w-full p-2 border rounded-lg text-sm"
                                         value={selectedLead.phone}
-                                        onChange={(e) => setSelectedLead({...selectedLead, phone: e.target.value})}
+                                        onChange={(e) => setSelectedLead({ ...selectedLead, phone: e.target.value })}
                                     />
                                 </div>
                             </div>
@@ -979,7 +1031,7 @@ const allValues = categories.flatMap(c => c.values || []);
                                     <select
                                         className="w-full p-2 border rounded-lg text-sm bg-white"
                                         value={selectedLead.interested_in || ''}
-                                        onChange={(e) => setSelectedLead({...selectedLead, interested_in: e.target.value})}
+                                        onChange={(e) => setSelectedLead({ ...selectedLead, interested_in: e.target.value })}
                                     >
                                         <option value="">Select Interest</option>
                                         {categories
@@ -994,21 +1046,21 @@ const allValues = categories.flatMap(c => c.values || []);
                             </div>
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase">Remarks</label>
-                                <input 
+                                <input
                                     className="w-full p-2 border rounded-lg text-sm"
                                     value={selectedLead.remarks || ''}
-                                    onChange={(e) => setSelectedLead({...selectedLead, remarks: e.target.value})}
+                                    onChange={(e) => setSelectedLead({ ...selectedLead, remarks: e.target.value })}
                                 />
                             </div>
                         </div>
                         <div className="p-6 bg-slate-50 border-t flex gap-3">
-                            <button 
+                            <button
                                 onClick={saveLeadEdit}
                                 className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 transition-all"
                             >
                                 SAVE CHANGES
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setIsEditModalOpen(false)}
                                 className="flex-1 bg-white border border-slate-200 py-2 rounded-xl font-bold text-slate-600"
                             >

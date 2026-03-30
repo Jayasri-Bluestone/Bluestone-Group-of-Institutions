@@ -26,6 +26,8 @@ import {
   Eye,
   EyeOff,
   ImportIcon,
+  BarChart2,
+  History,
 } from "lucide-react";
 import {
   FaGraduationCap,
@@ -50,8 +52,9 @@ import ExcelImportModal from "../Sidebar/ExcelImportModal";
 const Layout = ({ user, onLogout, onUpdateUser }) => {
   const getTier = (u) => {
     if (u?.tier) return u.tier;
-    if (["Main Admin", "MD", "GM"].includes(u?.role)) return "SUPER_ADMIN";
-    if (["TL", "Coordinator", "Head"].includes(u?.role)) return "ADMIN";
+    const r = u?.role || "";
+    if (["Main Admin", "MD", "GM", "Super Admin"].includes(r)) return "SUPER_ADMIN";
+    if (["TL", "Coordinator", "Head", "Admin"].includes(r)) return "ADMIN";
     return "STAFF";
   };
   const isSuperAdmin = getTier(user) === "SUPER_ADMIN";
@@ -527,8 +530,30 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
       icon: { icon: <Database size={20} className="text-emerald-600" />, colorClass: "text-emerald-600", bgClass: "bg-emerald-50", borderClass: "border-emerald-600" },
       visible: isAdminTier,
     },
+    {
+      name: "User Efficiency",
+      path: "/portal/efficiency",
+      icon: {
+        icon: <BarChart2 size={20} className="text-indigo-600" />,
+        colorClass: "text-indigo-600",
+        bgClass: "bg-indigo-50",
+        borderClass: "border-indigo-600"
+      },
+      visible: isSuperAdmin,
+    },
+    {
+      name: "Deleted Enquiries",
+      path: "/portal/deleted-enquiries",
+      icon: {
+        icon: <History size={20} className="text-red-500" />,
+        colorClass: "text-red-500",
+        bgClass: "bg-red-50",
+        borderClass: "border-red-500"
+      },
+      visible: isSuperAdmin,
+    },
   ].filter((item) => item.visible);
-  
+
   const bgiSubMenu = [
     { name: "All Enquiries", path: "/portal/bgi/all-enquiry" },
     { name: "All Leads Status", path: "/portal/bgi/lead-status" },
@@ -543,7 +568,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     { name: "All Payment Status", path: `${domainPath}?view=payment` },
     { name: "All Invalid Enquiries", path: `${domainPath}?view=invalid` },
   ];
-  
+
   const isSubMenuPathActive = (subPath) => {
     const [pathOnly, queryOnly = ""] = subPath.split("?");
     if (location.pathname !== pathOnly) return false;
@@ -809,8 +834,8 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
                     })
                   }
                   className={`w-full flex items-center gap-4 px-6 py-3 transition-all ${location.pathname.startsWith("/portal/bgi/")
-                      ? "bg-red-50 text-red-600 border-r-4 border-red-600"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    ? "bg-red-50 text-red-600 border-r-4 border-red-600"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     }`}
                 >
                   <div className={location.pathname.startsWith("/portal/bgi/") ? "text-red-500" : "text-slate-400"}>
@@ -833,8 +858,8 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
                         to={sub.path}
                         onClick={triggerMenuRefresh}
                         className={`block px-3 py-2 rounded-lg text-xs font-bold transition-all ${isSubMenuPathActive(sub.path)
-                            ? "bg-red-100 text-red-700"
-                            : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                          ? "bg-red-100 text-red-700"
+                          : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                           }`}
                       >
                         {sub.name}
@@ -928,8 +953,8 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
                             to={sub.path}
                             onClick={triggerMenuRefresh}
                             className={`block px-3 py-2 rounded-lg text-xs font-bold transition-all ${isSubMenuPathActive(sub.path)
-                                ? "bg-red-100 text-red-700"
-                                : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                              ? "bg-red-100 text-red-700"
+                              : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                               }`}
                           >
                             {sub.name}
@@ -1404,10 +1429,10 @@ ${isSelected
                   >
                     <option value="">Select Domain</option>
                     {sortedMasterData.map((d) => (
-                        <option key={d.id} value={d.name}>
-                          {d.name}
-                        </option>
-                      ))}
+                      <option key={d.id} value={d.name}>
+                        {d.name}
+                      </option>
+                    ))}
                   </select>
                   {validationErrors.domain && (
                     <p className="text-[10px] text-red-500 font-bold uppercase">

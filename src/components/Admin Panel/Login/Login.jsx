@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast';
 import { Mail, Lock, ShieldCheck, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 import { RiAdminFill, RiAdminLine } from 'react-icons/ri';
+import loginBg from '../../../assets/bluestone.png';
 
 const LoginPage = ({ onLoginSuccess }) => {
   const [captchaText, setCaptchaText] = useState("");
@@ -49,14 +50,25 @@ const LoginPage = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-200 via-red-100 to-red-50 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-       <div className="bg-red-600 p-8 text-center text-white">
-                 <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-                   <RiAdminFill size={32} />
-                 </div>
-          <h1 className="text-2xl font-black text-white tracking-tighter uppercase">Bluestone CRM</h1>
-          <p className="text-white/70 text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Leads Management System</p>
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-900">
+      {/* Background Image with Premium Overlay */}
+      <div 
+        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-transform duration-[20s] hover:scale-110"
+        style={{ backgroundImage: `url(${loginBg})` }}
+      />
+      <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/60 via-black/40 to-black/60 backdrop-blur-[2px]" />
+
+      <div className="relative z-10 bg-white/95 backdrop-blur-xl w-full max-w-md rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden border border-white/20">
+       <div className="bg-red-600 p-8 text-center text-white relative overflow-hidden">
+                  {/* Decorative background for header */}
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+                  <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full -ml-12 -mb-12 blur-xl" />
+                  
+                  <div className="relative z-10 w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm border border-white/30 shadow-inner">
+                    <RiAdminFill size={32} />
+                  </div>
+          <h1 className="relative z-10 text-2xl font-black text-white tracking-tighter uppercase">Bluestone CRM</h1>
+          <p className="relative z-10 text-white/80 text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Leads Management System</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-5">
