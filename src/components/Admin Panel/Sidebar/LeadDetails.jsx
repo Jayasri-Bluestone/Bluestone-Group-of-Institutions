@@ -37,7 +37,7 @@ const LeadDetails = ({ user }) => {
   const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
   const recipientPrefKey = `remark_default_recipients_${user?.id || "guest"}`;
 
-  const canEditPayments = isAdminTier;
+  const canEditPayments = isAdminTier || getTier(user) === "STAFF";
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [messageDraft, setMessageDraft] = useState({
     ref_id: "",
@@ -171,7 +171,7 @@ const LeadDetails = ({ user }) => {
         throw new Error(err.msg || err.error || "Save failed");
       }
       toast.success("Payment details updated", { id: tid, duration: 3000 });
-      setLead((prev) => (prev ? { ...prev, ...paymentDraft } : prev));
+      setLead((prev) => (prev ? { ...prev, ...paymentDraft, status: "Enrolled" } : prev));
     } catch (err) {
       toast.error(err.message || "Save failed", { id: tid, duration: 4000 });
     }

@@ -58,6 +58,7 @@ const DomainPage = ({ domain, user }) => {
     const [statusFilter, setStatusFilter] = useState('All');
     const [pendingOnly, setPendingOnly] = useState(false);
     const [todayOnly, setTodayOnly] = useState(false);
+    const [assignedTo, setAssignedTo] = useState('All');
     const [staffList, setStaffList] = useState([]);
     const [viewMode, setViewMode] = useState('all');
     const [loading, setLoading] = useState(true);
@@ -106,6 +107,7 @@ const DomainPage = ({ domain, user }) => {
                 });
                 if (categoryFilter !== 'All') params.set('category', categoryFilter);
                 if (interestFilter !== 'All') params.set('interest', interestFilter);
+                if (assignedTo !== 'All') params.set('assigned_to', assignedTo);
                 if (searchTerm.trim()) params.set('search', searchTerm.trim());
                 const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
                 const res = await fetch(url, {
@@ -130,6 +132,10 @@ const DomainPage = ({ domain, user }) => {
                     }
                     return true;
                 });
+
+                if (assignedTo !== 'All') {
+                    rows = rows.filter(lead => String(lead.assigned_to) === String(assignedTo));
+                }
 
                 // Client-side sorting for waiting/payment views
                 rows.sort((a, b) => {
@@ -175,6 +181,7 @@ const DomainPage = ({ domain, user }) => {
             if (statusFilter !== 'All') {
                 params.set('status', statusFilter);
             }
+            if (assignedTo !== 'All') params.set('assigned_to', assignedTo);
             if (searchTerm.trim()) params.set('search', searchTerm.trim());
             const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
             const res = await fetch(url, {
@@ -200,7 +207,7 @@ const DomainPage = ({ domain, user }) => {
         } finally {
             if (requestId === requestSeqRef.current) setLoading(false);
         }
-    }, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm, viewMode, sortBy, sortOrder]);
+    }, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm, viewMode, sortBy, sortOrder, assignedTo]);
     useEffect(() => {
         if (isSuperAdmin) return; // Super admin can access any domain
         const getUserDomains = (domainStr) => {
@@ -265,6 +272,7 @@ const DomainPage = ({ domain, user }) => {
         setStatusFilter('All');
         setCategoryFilter('All');
         setInterestFilter('All');
+        setAssignedTo('All');
         setPendingOnly(false);
         setTodayOnly(false);
     };
@@ -438,6 +446,8 @@ const DomainPage = ({ domain, user }) => {
             lead.student_name.toLowerCase().includes(q) ||
             lead.phone.includes(searchTerm) ||
             (lead.email || '').toLowerCase().includes(q);
+        const matchesAssigned =
+            assignedTo === 'All' || String(lead.assigned_to) === String(assignedTo);
         const normalizedStatusFilter = String(statusFilter || 'All').trim().toLowerCase();
         const matchesStatus =
             normalizedStatusFilter === 'all' || leadStatus === normalizedStatusFilter;
@@ -473,6 +483,7 @@ const DomainPage = ({ domain, user }) => {
         })();
         return (
             matchesSearch &&
+            matchesAssigned &&
             matchesStatus &&
             matchesCategory &&
             matchesInterest &&
@@ -739,6 +750,20 @@ const DomainPage = ({ domain, user }) => {
                             <option value="Waiting for Confirmation">Waiting for Confirmation</option>
                             <option value="Enrolled">Enrolled</option>
                             <option value="Closed">Closed</option>
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                        <UserCheck size={14} className="text-slate-400" />
+                        <select
+                            value={assignedTo}
+                            onChange={(e) => setAssignedTo(e.target.value)}
+                            className="bg-transparent text-xs font-bold text-slate-600 outline-none cursor-pointer"
+                        >
+                            <option value="All">All Assigned To</option>
+                            <option value={user.id}>{user.name} (Self)</option>
+                            {staffList.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
                         </select>
                     </div>
                     <button

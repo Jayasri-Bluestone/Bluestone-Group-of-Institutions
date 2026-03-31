@@ -51,6 +51,7 @@ const BGILeads = ({ user }) => {
   const [domain, setDomain] = useState("All");
   const [status, setStatus] = useState("All");
   const [paymentStatus, setPaymentStatus] = useState("All");
+  const [assignedTo, setAssignedTo] = useState("All");
   const [todayOnly, setTodayOnly] = useState(false);
   const invalidReason = "All";
   const [sortBy, setSortBy] = useState("created_at");
@@ -187,6 +188,7 @@ const BGILeads = ({ user }) => {
           status: "All",
           payment_status: "All",
           invalid_reason: invalidReason,
+          assigned_to: assignedTo,
           sort_by: sortBy,
           sort_order: sortOrder,
         });
@@ -226,6 +228,10 @@ const BGILeads = ({ user }) => {
               leadDomain.includes(q)
             );
           });
+        }
+
+        if (assignedTo && assignedTo !== "All") {
+          rows = rows.filter((lead) => String(lead.assigned_to) === String(assignedTo));
         }
 
         if (todayOnly) {
@@ -279,6 +285,7 @@ const BGILeads = ({ user }) => {
           status: "All",
           payment_status: "All",
           invalid_reason: invalidReason,
+          assigned_to: assignedTo,
           sort_by: sortBy,
           sort_order: sortOrder,
         });
@@ -316,6 +323,9 @@ const BGILeads = ({ user }) => {
               leadDomain.includes(q)
             );
           });
+        }
+        if (assignedTo && assignedTo !== "All") {
+          rows = rows.filter((lead) => String(lead.assigned_to) === String(assignedTo));
         }
 
         // Keep pending page aligned with dashboard pending card:
@@ -374,6 +384,7 @@ const BGILeads = ({ user }) => {
         status: effectiveStatus,
         payment_status: effectivePaymentStatus,
         invalid_reason: invalidReason,
+        assigned_to: assignedTo,
         source: resolvedView.source || "All",
         sort_by: sortBy,
         sort_order: sortOrder,
@@ -617,7 +628,7 @@ const BGILeads = ({ user }) => {
   useEffect(() => {
     fetchLeads(1, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedView.apiView, pageSize]);
+  }, [resolvedView.apiView, pageSize, assignedTo, domain, status, paymentStatus, todayOnly, sortBy, sortOrder]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -760,6 +771,18 @@ const BGILeads = ({ user }) => {
           <option value="Paid">Paid</option>
           {resolvedView.apiView !== "payment" && <option value="Unpaid">Unpaid</option>}
           <option value="Partially Paid">Partially Paid</option>
+        </select>
+
+        <select
+          value={assignedTo}
+          onChange={(e) => setAssignedTo(e.target.value)}
+          className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white"
+        >
+          <option value="All">All Assigned To</option>
+          <option value={user.id}>{user.name} (Self)</option>
+          {staffList.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
         </select>
 
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg text-sm px-3 py-2">
