@@ -422,8 +422,8 @@ const LiveFeedManager = ({ user }) => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
+        <div>
+          <table className="w-full text-left text-sm whitespace-normal">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
                 <th className="p-4 border-r border-slate-100">
@@ -484,7 +484,7 @@ const LiveFeedManager = ({ user }) => {
                     {new Date(note.date).toLocaleDateString("en-GB")}
                   </td>
 
-                  <td className="p-4 text-xs font-medium text-slate-700 border-r border-slate-50 align-top leading-relaxed min-w-[300px]">
+                  <td className="p-4 text-xs font-medium text-slate-700 border-r border-slate-50 align-top leading-relaxed break-words">
                     {note.message}
                   </td>
 

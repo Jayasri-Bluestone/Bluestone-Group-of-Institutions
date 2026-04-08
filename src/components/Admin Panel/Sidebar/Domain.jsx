@@ -48,6 +48,9 @@ const DomainPage = ({ domain, user }) => {
     const hasFocusedLeadRef = useRef(false);
     const requestSeqRef = useRef(0);
     const focusLeadId = location.state?.focusLeadId || null;
+    const focusLeadCode = location.state?.focusLeadCode || null;
+    const hasAppliedFocusRef = useRef(null); // Store the applied ID/Code to detect changes
+
     const [data, setData] = useState({
         leads: [],
         totalPages: 1,
@@ -58,6 +61,9 @@ const DomainPage = ({ domain, user }) => {
     const [statusFilter, setStatusFilter] = useState('All');
     const [pendingOnly, setPendingOnly] = useState(false);
     const [todayOnly, setTodayOnly] = useState(false);
+    const [drillDate, setDrillDate] = useState(null);
+    const [drillStartDate, setDrillStartDate] = useState(null);
+    const [drillEndDate, setDrillEndDate] = useState(null);
     const [assignedTo, setAssignedTo] = useState('All');
     const [staffList, setStaffList] = useState([]);
     const [viewMode, setViewMode] = useState('all');
@@ -99,8 +105,7 @@ const DomainPage = ({ domain, user }) => {
                 ? domain
                 : (userDomainsList.length > 0 ? userDomainsList[0] : user.domain);
             const isWaitingView = viewMode === 'waiting';
-            const isPaymentView = viewMode === 'payment';
-            if (isWaitingView || isPaymentView) {
+            if (isWaitingView) {
                 const params = new URLSearchParams({
                     page: '1',
                     limit: '5000'
@@ -109,6 +114,10 @@ const DomainPage = ({ domain, user }) => {
                 if (interestFilter !== 'All') params.set('interest', interestFilter);
                 if (assignedTo !== 'All') params.set('assigned_to', assignedTo);
                 if (searchTerm.trim()) params.set('search', searchTerm.trim());
+                if (todayOnly) params.set('today', '1');
+                if (drillDate) params.set('date', drillDate);
+                if (drillStartDate) params.set('startDate', drillStartDate);
+                if (drillEndDate) params.set('endDate', drillEndDate);
                 const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
                 const res = await fetch(url, {
                     headers: { Authorization: `Bearer ${token}` }
@@ -122,22 +131,12 @@ const DomainPage = ({ domain, user }) => {
                 let rows = Array.isArray(result.leads) ? result.leads : [];
                 rows = rows.filter((lead) => {
                     const st = String(lead.status || '').trim().toLowerCase();
-                    const ps = String(lead.payment_status || '').trim().toLowerCase();
-                    if (isWaitingView) {
-                        const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
-                        return st.includes('waiting') || !knownNonWaiting.includes(st);
-                    }
-                    if (isPaymentView) {
-                        return ps === 'paid' || ps === 'partially paid';
-                    }
-                    return true;
+                    const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
+                    return st.includes('waiting') || !knownNonWaiting.includes(st);
                 });
 
-                if (assignedTo !== 'All') {
-                    rows = rows.filter(lead => String(lead.assigned_to) === String(assignedTo));
-                }
 
-                // Client-side sorting for waiting/payment views
+                // Client-side sorting for waiting views
                 rows.sort((a, b) => {
                     let aVal = a[sortBy === 'student_name' ? 'student_name' : sortBy];
                     let bVal = b[sortBy === 'student_name' ? 'student_name' : sortBy];
@@ -170,19 +169,26 @@ const DomainPage = ({ domain, user }) => {
                 });
                 return;
             }
-            const params = new URLSearchParams({
-                page: String(page),
-                limit: String(limit),
-                sortBy,
-                sortOrder
-            });
+            const params = new URLSearchParams();
+            params.set('page', String(page));
+            params.set('limit', String(limit));
+            params.set('sortBy', sortBy);
+            params.set('sortOrder', sortOrder);
             if (categoryFilter !== 'All') params.set('category', categoryFilter);
             if (interestFilter !== 'All') params.set('interest', interestFilter);
-            if (statusFilter !== 'All') {
+            if (viewMode === 'all') params.set('status', 'New');
+            else if (viewMode === 'lead-status') params.set('status', 'Follow Up');
+            else if (viewMode === 'invalid') params.set('status', 'Closed');
+            else if (viewMode === 'payment') params.set('payment_status', 'Paid,Partially Paid');
+            else if (statusFilter !== 'All') {
                 params.set('status', statusFilter);
             }
             if (assignedTo !== 'All') params.set('assigned_to', assignedTo);
             if (searchTerm.trim()) params.set('search', searchTerm.trim());
+            if (todayOnly) params.set('today', '1');
+            if (drillDate) params.set('date', drillDate);
+            if (drillStartDate) params.set('startDate', drillStartDate);
+            if (drillEndDate) params.set('endDate', drillEndDate);
             const url = `${API_BASE_URL_PORTAL}/api/leads/domain/${encodeURIComponent(finalDomain)}?${params.toString()}`;
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -207,7 +213,16 @@ const DomainPage = ({ domain, user }) => {
         } finally {
             if (requestId === requestSeqRef.current) setLoading(false);
         }
-    }, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm, viewMode, sortBy, sortOrder, assignedTo]);
+    }, [user, domain, pageSize, categoryFilter, interestFilter, statusFilter, searchTerm, viewMode, sortBy, sortOrder, assignedTo, todayOnly, drillDate, drillStartDate, drillEndDate]);
+
+    useEffect(() => {
+        // Reset when the focusLeadCode changes (e.g., a new search)
+        if (focusLeadCode && hasAppliedFocusRef.current !== focusLeadCode) {
+            setSearchTerm(String(focusLeadCode));
+            hasAppliedFocusRef.current = focusLeadCode;
+            fetchDomainData(1); // Force return to page 1
+        }
+    }, [focusLeadCode, fetchDomainData]);
     useEffect(() => {
         if (isSuperAdmin) return; // Super admin can access any domain
         const getUserDomains = (domainStr) => {
@@ -341,6 +356,10 @@ const DomainPage = ({ domain, user }) => {
         const pendingQ = qp.get('pending');
         const todayQ = qp.get('today');
         const viewQ = qp.get('view');
+        const staffQ = qp.get('assignedTo');
+        const dateQ = qp.get('date');
+        const startQ = qp.get('startDate');
+        const endQ = qp.get('endDate');
 
         const normalizedView = (viewQ || 'all').toLowerCase();
         setViewMode(normalizedView === 'pending' ? 'waiting' : normalizedView);
@@ -354,19 +373,42 @@ const DomainPage = ({ domain, user }) => {
 
         setPendingOnly(pendingQ === '1');
         setTodayOnly(todayQ === '1');
+        setAssignedTo(staffQ || 'All');
+        setDrillDate(dateQ);
+        setDrillStartDate(startQ);
+        setDrillEndDate(endQ);
     }, [location.search]);
     useEffect(() => {
+        // Reset the focused lead guard when the target ID changes
+        hasFocusedLeadRef.current = false;
+    }, [focusLeadId]);
+
+    useEffect(() => {
         if (!focusLeadId || hasFocusedLeadRef.current || data.leads.length === 0) return;
-        const match = data.leads.find((lead) => lead.id === focusLeadId);
+        const match = data.leads.find((lead) => Number(lead.id) === Number(focusLeadId));
         if (match) {
             hasFocusedLeadRef.current = true;
-            const el = document.getElementById(`lead-row-${focusLeadId}`);
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Delay scrolling slightly to ensure DOM is fully ready
+            setTimeout(() => {
+                const el = document.getElementById(`lead-row-${focusLeadId}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 300);
+        }
+    }, [focusLeadId, data.leads, handleEditLead]);
+    const updateStatus = async (leadId, newStatus, customSuccessMessage = null, leadName = '') => {
+        if (newStatus === "Enrolled") {
+            const lead = data.leads.find(l => l.id === leadId);
+            const ps = (lead?.payment_status || "").toLowerCase();
+            if (ps === "unpaid" || ps === "") {
+                toast.error("Update payment status");
+                fetchDomainData(data.page);
+                return false;
             }
         }
-    }, [focusLeadId, data.leads]);
-    const updateStatus = async (leadId, newStatus, customSuccessMessage = null, leadName = '') => {
+
         const confirmed = await confirmToast(
             `Move ${leadName ? `"${leadName}" ` : ''}to ${newStatus}?`,
             "Move"
@@ -385,6 +427,7 @@ const DomainPage = ({ domain, user }) => {
                 body: JSON.stringify({ leadId, status: newStatus })
             });
             if (res.ok) {
+                hasFocusedLeadRef.current = false;
                 toast.success(customSuccessMessage || `Status updated to ${newStatus}`);
                 fetchDomainData(data.page);
                 return true;
@@ -468,28 +511,17 @@ const DomainPage = ({ domain, user }) => {
                 leadDate.getDate() === now.getDate()
             );
         })();
-        const matchesViewMode = (() => {
-            if (viewMode === 'all') return leadStatus === 'new';
-            if (viewMode === 'lead-status') return leadStatus === 'follow up' || leadStatus === 'enrolled';
-            if (viewMode === 'waiting') {
-                const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
-                return leadStatus.includes('waiting') || !knownNonWaiting.includes(leadStatus);
-            }
-            if (viewMode === 'invalid') return leadStatus === 'closed';
-            if (viewMode === 'payment') {
-                return leadPayment === 'paid' || leadPayment === 'partially paid';
-            }
-            return true;
-        })();
+        const isFocusedLead = focusLeadId && Number(lead.id) === Number(focusLeadId);
+        const isSearching = searchTerm.trim().length > 0;
+
         return (
-            matchesSearch &&
-            matchesAssigned &&
-            matchesStatus &&
-            matchesCategory &&
-            matchesInterest &&
-            matchesPending &&
-            matchesToday &&
-            matchesViewMode
+            (isFocusedLead || matchesSearch) &&
+            (isFocusedLead || matchesAssigned) &&
+            (isFocusedLead || matchesStatus) &&
+            (isFocusedLead || matchesCategory) &&
+            (isFocusedLead || matchesInterest) &&
+            (isFocusedLead || matchesPending) &&
+            matchesToday
         );
     });
 
@@ -649,7 +681,7 @@ const DomainPage = ({ domain, user }) => {
 
     const viewTitleMap = {
         all: 'All Enquiries',
-        'lead-status': 'All Leads Status',
+        'lead-status': 'All Confirmed Leads Status',
         waiting: 'Waiting for Confirmation',
         payment: 'All Payment Status',
         invalid: 'All Invalid Enquiries',
@@ -737,21 +769,6 @@ const DomainPage = ({ domain, user }) => {
                                 </option>
                             ))}
                     </select>
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                        <Filter size={14} className="text-slate-400" />
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className="bg-transparent text-xs font-bold text-slate-600 outline-none cursor-pointer"
-                        >
-                            <option value="All">All Status</option>
-                            <option value="New">New</option>
-                            <option value="Follow Up">Follow Up</option>
-                            <option value="Waiting for Confirmation">Waiting for Confirmation</option>
-                            <option value="Enrolled">Enrolled</option>
-                            <option value="Closed">Closed</option>
-                        </select>
-                    </div>
                     <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                         <UserCheck size={14} className="text-slate-400" />
                         <select
@@ -850,11 +867,11 @@ const DomainPage = ({ domain, user }) => {
                 </div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className={`overflow-x-auto ${enableTableScroll ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
+                <div className={`${filteredLeads.length > 10 ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
                     <table className="w-full text-left text-sm border-collapse">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                                <th className="p-4 border-r border-slate-100">
+                                <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">
                                     <input
                                         type="checkbox"
                                         checked={allVisibleSelected}
@@ -862,16 +879,17 @@ const DomainPage = ({ domain, user }) => {
                                         aria-label="Select all leads"
                                     />
                                 </th>
-                                <SortHeader label="Candidate" sortKey="student_name" />
-                                <SortHeader label="Phone" sortKey="phone" />
-                                <SortHeader label="Category" sortKey="category" />
-                                <SortHeader label="Interest" sortKey="interested_in" />
-                                <th className="p-4 border-r border-slate-100">
+                                <SortHeader label="Candidate" sortKey="student_name" className="!p-2.5 text-[10px]" />
+                                <SortHeader label="Phone" sortKey="phone" className="!p-2.5 text-[10px]" />
+                                <SortHeader label="Category" sortKey="category" className="!p-2.5 text-[10px]" />
+                                <SortHeader label="Interest" sortKey="interested_in" className="!p-2.5 text-[10px]" />
+                                <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">
                                     {isStaffTier ? 'Assigned By' : 'Assigned To'}
                                 </th>
-                                <SortHeader label="Date" sortKey="created_at" />
-                                <SortHeader label="Status" sortKey="status" />
-                                <th className="p-4 text-center">Actions</th>
+                                <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Remarks</th>
+                                <SortHeader label="Date" sortKey="created_at" className="!p-2.5 text-[10px]" />
+                                <SortHeader label="Status" sortKey="status" className="!p-2.5 text-[10px]" />
+                                <th className="p-2.5 text-center text-[10px] font-black text-slate-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -879,10 +897,10 @@ const DomainPage = ({ domain, user }) => {
                                 <tr
                                     id={`lead-row-${lead.id}`}
                                     key={lead.id}
-                                    className={`hover:bg-blue-50/30 transition-colors whitespace-nowrap ${focusLeadId === lead.id ? 'bg-blue-50/50 ring-1 ring-blue-200' : ''
+                                    className={`hover:bg-blue-50/30 transition-colors ${focusLeadId === lead.id ? 'bg-blue-50/50 ring-1 ring-blue-200' : ''
                                         }`}
                                 >
-                                    <td className="p-4 border-r border-slate-50">
+                                    <td className="p-2.5 border-r border-slate-50">
                                         <input
                                             type="checkbox"
                                             checked={selectedLeadSet.has(lead.id)}
@@ -890,28 +908,28 @@ const DomainPage = ({ domain, user }) => {
                                             aria-label={`Select lead ${lead.student_name}`}
                                         />
                                     </td>
-                                    <td className="p-4 border-r border-slate-50">
-                                        <p className="font-bold text-slate-800">{lead.student_name}</p>
-                                        <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`}</p>
+                                    <td className="p-2.5 border-r border-slate-50">
+                                        <p className="font-bold text-slate-800 text-[11.5px] whitespace-normal break-words leading-tight">{lead.student_name}</p>
+                                        <p className="text-[10px] text-slate-400 whitespace-normal break-words mt-0.5">{lead.lead_code || `#${lead.id}`}</p>
                                     </td>
-                                    <td className="p-4 font-medium text-slate-600 border-r border-slate-50 text-xs">{lead.phone}</td>
-                                    <td className="p-4 text-xs font-bold text-slate-60 border-slate-50 border-r">
-                                        {lead.category || '-'}
+                                    <td className="p-2.5 text-[11px] font-medium text-slate-600 border-r border-slate-50 whitespace-normal">{lead.phone}</td>
+                                    <td className="p-2.5 border-slate-50 border-r">
+                                        <div className="whitespace-normal break-words text-[11px] font-bold text-slate-700 leading-tight">{lead.category || '-'}</div>
                                     </td>
-                                    <td className="p-4 text-xs text-blue-600 font-bold border-slate-50 border-r">
-                                        {lead.interested_in || '-'}
+                                    <td className="p-2.5 border-slate-50 border-r">
+                                        <div className="whitespace-normal break-words text-[11px] font-bold text-blue-600 leading-tight">{lead.interested_in || '-'}</div>
                                     </td>
-                                    <td className="p-4 border-r border-slate-50">
+                                    <td className="p-2.5 border-r border-slate-50">
                                         {isStaffTier ? (
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-1.5">
                                                 <div className={`w-1.5 h-1.5 rounded-full ${lead.assigned_by === user.id ? 'bg-emerald-400' : 'bg-blue-400'}`}></div>
-                                                <span className="text-xs font-bold text-slate-700">
+                                                <span className="text-[11px] font-bold text-slate-700 leading-tight">
                                                     {lead.assigned_by === user.id ? 'Self' : (lead.assigned_by_name || "System")}
                                                 </span>
                                             </div>
                                         ) : (
                                             <select
-                                                className="text-[11px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20"
+                                                className="text-[11px] font-bold bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-2 ring-blue-500/20 w-fit"
                                                 value={lead.assigned_to || ""}
                                                 onChange={(e) => {
                                                     const selectedStaff = e.target.value === user.id.toString()
@@ -928,51 +946,58 @@ const DomainPage = ({ domain, user }) => {
                                             </select>
                                         )}
                                     </td>
-                                    <td className="p-4 text-slate-500 text-[11px] font-bold border-r border-slate-50">
+                                    <td 
+                                        className="p-2.5 border-r border-slate-50 min-w-[150px] cursor-pointer group"
+                                    >
+                                        <p className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors" title={lead.remarks}>
+                                            {lead.remarks || "-"}
+                                        </p>
+                                    </td>
+                                    <td className="p-2.5 text-slate-500 text-[11px] font-bold border-r border-slate-50 leading-tight">
                                         {new Date(lead.created_at).toLocaleDateString('en-GB')}
                                     </td>
-                                    <td className="p-4 border-r border-slate-50">
+                                    <td className="p-2.5 border-r border-slate-50">
                                         <select
                                             value={lead.status}
                                             onChange={(e) => updateStatus(lead.id, e.target.value, null, lead.student_name)}
-                                            className={`text-[10px] font-black uppercase px-2 py-1 rounded border border-transparent outline-none cursor-pointer ${getStatusStyle(lead.status)}`}
+                                            className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded border border-transparent outline-none cursor-pointer w-fit ${getStatusStyle(lead.status)}`}
                                         >
                                             <option value="New">New</option>
-                                            <option value="Follow Up">Follow Up</option>
+                                            <option value="Follow Up">Confirmed Leads</option>
                                             <option value="Waiting for Confirmation">Waiting for Confirmation</option>
                                             <option value="Enrolled">Enrolled</option>
                                             <option value="Closed">Closed</option>
                                         </select>
                                     </td>
-                                    <td className="p-4">
-                                        <div className="flex items-center justify-center gap-2">
+                                    <td className="p-2.5">
+                                        <div className="flex items-center justify-center gap-1.5">
                                             <button
                                                 onClick={() => navigate(`/portal/domain/${location.pathname.split('/').pop()}/lead/${lead.id}`)}
-                                                className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors border border-blue-100"
+                                                className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors border border-blue-100"
                                                 title="View Details"
                                             >
-                                                <Eye size={16} />
+                                                <Eye size={15} />
                                             </button>
                                             <button
                                                 onClick={() => fetchLeadHistory(lead.id, lead.student_name)}
-                                                className="p-1.5 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
+                                                className="p-1.5 text-indigo-600 hover:bg-indigo-100 rounded transition-colors border border-indigo-100"
                                                 title="View History"
                                             >
-                                                <History size={16} />
+                                                <History size={15} />
                                             </button>
                                             <button
                                                 onClick={() => handleEditLead(lead)}
-                                                className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-100"
+                                                className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded transition-colors border border-emerald-100"
                                                 title="Edit Lead"
                                             >
-                                                <Edit size={16} />
+                                                <Edit size={15} />
                                             </button>
                                             <button
                                                 onClick={() => deleteLead(lead.id)}
-                                                className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors border border-red-100"
+                                                className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors border border-red-100"
                                                 title="Delete Lead"
                                             >
-                                                <Trash2 size={16} />
+                                                <Trash2 size={15} />
                                             </button>
                                         </div>
                                     </td>

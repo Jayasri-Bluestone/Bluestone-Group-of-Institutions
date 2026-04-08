@@ -116,7 +116,29 @@ const UserEfficiency = ({ user }) => {
     return `${h}.${m.toString().padStart(2, '0')}`;
   };
 
-  const getUserStatus = (lastActiveAt) => {
+  const getUserStatus = (lastActiveAt, iactive, secondsAgo) => {
+    // 1. Priority: Server-provided relative 'secondsAgo' (drift-immune)
+    if (secondsAgo !== undefined && secondsAgo !== null) {
+      if (secondsAgo <= 65) { 
+         return { label: 'ONLINE', color: 'emerald', isOnline: true };
+      }
+      
+      // 2. Secondary: If backend explicitly says iactive=1, user is definitely online
+      // (Used as a fallback if the window has passed but the heartbeat just finished)
+      if (iactive === 1 && secondsAgo <= 120) {
+        return { label: 'ONLINE', color: 'emerald', isOnline: true };
+      }
+
+      const h = Math.floor(secondsAgo / 3600);
+      const d = Math.floor(h / 24);
+      const m = Math.floor(secondsAgo / 60);
+      let timeText = '';
+      if (d > 0) timeText = `${d}d ago`;
+      else if (h > 0) timeText = `${h}h ago`;
+      else timeText = `${m}m ago`;
+      return { label: timeText.toUpperCase(), color: 'slate', isOnline: false };
+    }
+
     if (!lastActiveAt) return { label: 'OFFLINE', color: 'slate', isOnline: false };
 
     // Parse date safely
@@ -209,7 +231,7 @@ const UserEfficiency = ({ user }) => {
       { header: 'Efficiency (%)', accessor: (u) => `${Math.min(100, (u.totalHours / (timeRange === 'day' ? 8 : timeRange === 'week' ? 40 : 160)) * 100).toFixed(1)}%` },
       { header: 'Total Usage (Hours)', accessor: (u) => formatToHMM(u.totalMinutes) },
       { header: 'Total Usage (Minutes)', accessor: 'totalMinutes' },
-      { header: 'Status', accessor: (u) => getUserStatus(u.last_active_at).isOnline ? 'ONLINE' : 'OFFLINE' }
+      { header: 'Status', accessor: (u) => getUserStatus(u.last_active_at, u.iactive, u.secondsAgo).isOnline ? 'ONLINE' : 'OFFLINE' }
     ];
     await exportToExcel(filename, columns, sortedUserTotals);
   };
@@ -669,7 +691,7 @@ const UserEfficiency = ({ user }) => {
                             </td>
                             <td className="px-6 py-5 text-center">
                               {(() => {
-                                const status = getUserStatus(u.last_active_at);
+                                const status = getUserStatus(u.last_active_at, u.iactive, u.secondsAgo);
                                 return (
                                   <div className="flex flex-col items-center gap-1">
                                     <div className="flex items-center gap-2">

@@ -771,7 +771,7 @@ const UserManagement = ({ user }) => {
         </div>
 
 
-        <div className={`overflow-x-auto min-h-[400px] ${enableTableScroll ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
+        <div className={`min-h-[400px] ${enableTableScroll ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b">
               <tr>
@@ -888,7 +888,7 @@ const DisplayRow = ({ staffMember, setEditingId, setEditFormData, handleDelete, 
   return (
     <>
       <td className="p-4 font-bold text-slate-700">{staffMember.employee_id || "-"}</td>
-      <td className="p-4 font-bold text-slate-700">{staffMember.name || "-"}</td>
+      <td className="p-4 font-bold text-slate-700 whitespace-normal break-words">{staffMember.name || "-"}</td>
       <td className="p-4 min-w-0">
         <div className="flex flex-col gap-1.5">
           <div className="flex gap-1">
@@ -901,7 +901,7 @@ const DisplayRow = ({ staffMember, setEditingId, setEditFormData, handleDelete, 
               <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold uppercase border border-slate-200">All Domains</span>
             ) : (
               (staffMember.domain || "").split(',').map((d, idx) => d.trim() && (
-                <span key={idx} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-bold uppercase border border-blue-100 whitespace-nowrap">
+                <span key={idx} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-bold uppercase border border-blue-100">
                   {d.trim()}
                 </span>
               ))
@@ -910,7 +910,7 @@ const DisplayRow = ({ staffMember, setEditingId, setEditFormData, handleDelete, 
         </div>
       </td>
       <td className="p-4 text-xs text-slate-500">
-        <div>{staffMember.email || "-"}</div>
+        <div className="whitespace-normal break-all">{staffMember.email || "-"}</div>
         <div>{staffMember.phone || "-"}</div>
       </td>
       <td className="p-4 text-center">

@@ -43,6 +43,18 @@ export function AboutPage() {
     fetchAboutMedia();
   }, []);
 
+  useEffect(() => {
+    if (window.location.hash) {
+      const id = window.location.hash.substring(1);
+      const element = document.getElementById(id);
+      if (element) {
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
+    }
+  }, [loading]);
+
   // Helper to get image or placeholder
   const getImg = (key) => media[key] || "https://placehold.co/800x600?text=Upload+In+Admin";
 
@@ -96,7 +108,7 @@ export function AboutPage() {
   return (
     <main className="pt-16">
       {/* Hero Section */}
-      <section id="about" className="py-20 bg-gradient-to-b from-white via-red-50/30 to-white relative overflow-hidden">
+      <section id="about" className="py-20 bg-gradient-to-b from-white via-red-50/30 to-white relative overflow-hidden scroll-mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <motion.div initial={{ opacity: 0, x: -50 }} whileInView={{ opacity: 1, x: 0 }}>
@@ -128,7 +140,7 @@ export function AboutPage() {
       <section className="bg-gradient-to-br from-red-600 via-black to-red-600 py-28 text-white">
         <div className="max-w-7xl mx-auto px-6 space-y-24">
           {/* MD */}
-          <div className="grid md:grid-cols-2 gap-14 items-center">
+          <div id="md-profile" className="grid md:grid-cols-2 gap-14 items-center scroll-mt-24">
             <div className="flex justify-center">
               <div className="relative">
                 <img src={getImg("MD.jpeg")} className="w-80 h-96 object-cover rounded-3xl border-4 border-white shadow-2xl" alt="MD" />

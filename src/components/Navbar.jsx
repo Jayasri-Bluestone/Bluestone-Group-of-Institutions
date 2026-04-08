@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, ChevronDown, GraduationCap, Plane, BookOpen, Briefcase, Building2, Trophy, Languages, Lightbulb, MoreHorizontal } from 'lucide-react';
+import { Menu, X, ChevronDown, GraduationCap, Plane, BookOpen, Briefcase, Building2, Trophy, Languages, Lightbulb, MoreHorizontal, Users } from 'lucide-react';
 import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import Logo from "../assets/logo.png";
@@ -10,6 +10,8 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [isBusinessDropdownOpen, setIsBusinessDropdownOpen] = useState(false);
   const [mobileBusinessOpen, setMobileBusinessOpen] = useState(false);
+  const [isAboutDropdownOpen, setIsAboutDropdownOpen] = useState(false);
+  const [mobileAboutOpen, setMobileAboutOpen] = useState(false);
   
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,7 +36,7 @@ export function Navbar() {
 
   const navItems = [
     { label: 'Home', path: '/' },
-    { label: 'About', path: '/about', hash: 'about' }, // Shortened for tablet
+    { label: 'About', path: '/about' },
     { label: 'Gallery', path: '/gallery', hash: 'people' },
     { label: 'Career', path: '/career', hash: 'vision' },
     { label: 'Contact', path: '/contact', hash: 'contact' },
@@ -68,7 +70,18 @@ export function Navbar() {
           {/* Navigation - Tablet logic: use smaller gaps and hide button if needed */}
           <div className="hidden md:flex items-center gap-3 lg:gap-8">
             <div className="flex items-center gap-3 lg:gap-6">
-              {navItems.map((item) => (
+              {/* Home */}
+              <Link
+                to="/"
+                className={`text-[13px] lg:text-sm font-semibold transition-colors ${
+                  location.pathname === '/' ? 'text-red-600' : 'text-gray-600 hover:text-red-600'
+                }`}
+              >
+                Home
+              </Link>
+
+              {/* Nav Items */}
+              {navItems.filter(i => i.label !== 'Home').map((item) => (
                 <Link
                   key={item.label}
                   to={item.path}
@@ -158,13 +171,17 @@ export function Navbar() {
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {navItems.map((item) => (
+              <Link to="/" onClick={() => setIsMenuOpen(false)} className="block p-3 text-sm font-bold text-gray-700 hover:bg-red-50 rounded-lg">HOME</Link>
+              
+
+              {navItems.filter(i => i.label !== 'Home').map((item) => (
                 <Link
                   key={item.label}
                   to={item.path}
+                  onClick={() => setIsMenuOpen(false)}
                   className="block p-3 text-sm font-bold text-gray-700 hover:bg-red-50 rounded-lg"
                 >
-                  {item.label}
+                  {item.label.toUpperCase()}
                 </Link>
               ))}
               
@@ -173,17 +190,29 @@ export function Navbar() {
                   onClick={() => setMobileBusinessOpen(!mobileBusinessOpen)}
                   className="w-full flex justify-between items-center p-3 text-sm font-bold text-gray-700"
                 >
-                  BUSINESS FOCUS <ChevronDown size={16} />
+                  BUSINESS FOCUS <ChevronDown size={16} className={`transition-transform duration-200 ${mobileBusinessOpen ? 'rotate-180' : ''}`} />
                 </button>
-                {mobileBusinessOpen && (
-                  <div className="ml-4 space-y-1">
-                    {businessItems.map(item => (
-                      <Link key={item.path} to={item.path} className="flex items-center gap-3 p-2 text-xs text-gray-600">
-                        <item.icon size={14} className="text-red-600" /> {item.label}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+                <AnimatePresence>
+                  {mobileBusinessOpen && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="ml-4 space-y-1 overflow-hidden"
+                    >
+                      {businessItems.map(item => (
+                        <Link 
+                          key={item.path} 
+                          to={item.path} 
+                          onClick={() => setIsMenuOpen(false)}
+                          className="flex items-center gap-3 p-2 text-xs font-bold text-gray-600"
+                        >
+                          <item.icon size={14} className="text-red-600" /> {item.label}
+                        </Link>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
             

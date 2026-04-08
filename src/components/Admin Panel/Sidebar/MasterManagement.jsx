@@ -834,7 +834,7 @@ const MasterManagement = ({ user }) => {
               <span>Live Master Structure</span>
               <span className="text-slate-400">MD/GM Access Only</span>
             </div>
-            <div className="p-4 overflow-x-auto">
+            <div>
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b">
                   <tr>
@@ -872,7 +872,7 @@ const MasterManagement = ({ user }) => {
                           )}
                         </td>
                         <td className="p-3">
-                          <div className="font-black text-slate-800 uppercase text-xs truncate">{domain.name}</div>
+                          <div className="font-black text-slate-800 uppercase text-xs whitespace-normal break-words">{domain.name}</div>
                           <div className="text-[10px] text-slate-400 uppercase tracking-widest">Domain</div>
                         </td>
                         <td className="p-3">
@@ -1167,7 +1167,7 @@ const MasterManagement = ({ user }) => {
             <div className="p-4 bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wide">
               Maintained Roles
             </div>
-            <div className="p-4 overflow-x-auto overflow-y-auto max-h-[500px] border-b border-slate-200">
+            <div className="p-4 overflow-y-auto max-h-[500px] border-b border-slate-200">
               <table className="w-full text-sm relative">
                 <thead className="text-[10px] uppercase text-slate-500 sticky top-0 bg-white z-10 shadow-sm">
                   <tr>
@@ -1202,7 +1202,7 @@ const MasterManagement = ({ user }) => {
                               value={editingHierarchy.role_name}
                               onChange={(e) => setEditingHierarchy((prev) => ({ ...prev, role_name: e.target.value }))}
                             />
-                          ) : row.role_name}
+                          ) : <div className="whitespace-normal break-words">{row.role_name}</div>}
                         </td>
                         <td className="p-2 text-center">
                           {isEditing ? (

@@ -74,6 +74,8 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const [openDomainMenus, setOpenDomainMenus] = useState({});
   const [menuRefreshNonce, setMenuRefreshNonce] = useState(0);
   const sessionExpiredRef = useRef(false);
+  const lastInteractionRef = useRef(0);
+  const INTERACTION_THROTTLE_MS = 600000; // 10 minutes
   const SESSION_CHECK_MS = 60000;
   // Data States
   const [masterData, setMasterData] = useState([]);
@@ -98,6 +100,27 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
       return JSON.parse(atob(padded));
     } catch {
       return null;
+    }
+  };
+
+  // --- INTERACTION TRACKING (Optimized) ---
+  const trackInteraction = async () => {
+    const now = Date.now();
+    if (now - lastInteractionRef.current < INTERACTION_THROTTLE_MS) return;
+    
+    lastInteractionRef.current = now;
+    try {
+      await fetch(`${API_BASE_URL_PORTAL}/api/user/heartbeat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        // We use a body to keep it consistent, though the user is pulled from JWT
+        body: JSON.stringify({ interaction: true }),
+      });
+    } catch (err) {
+      console.error("Heartbeat sync failed:", err);
     }
   };
 
@@ -402,13 +425,21 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     if (!lead?.id) return;
     const slug = getSlug(leadDomain);
     const status = String(lead.status || '').trim().toLowerCase();
+    
+    // Determine the default view based on status
     let viewQuery = '?view=all';
     if (status === 'follow up') viewQuery = '?view=lead-status';
     else if (status.includes('waiting')) viewQuery = '?view=waiting';
     else if (status === 'closed') viewQuery = '?view=invalid';
-    else if (status === 'enrolled') viewQuery = `?view=lead-status&status=${encodeURIComponent('Enrolled')}`;
+    else if (status === 'enrolled') {
+      viewQuery = '?view=payment';
+    }
+
     navigate(`/portal/domain/${slug}${viewQuery}`, {
-      state: { focusLeadId: lead.id },
+      state: { 
+        focusLeadId: lead.id,
+        focusLeadCode: lead.lead_code || lead.id // Use ID as fallback for code
+      },
     });
   };
   const getDomainMenuIcon = (domain) => {
@@ -474,11 +505,28 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const userDomainsList = getUserDomains(user?.domain);
   // Check if a master domain name belongs to the user (case-insensitive, handles aliases)
   const isUserDomain = (domainName = '') => {
+    if (!domainName) return false;
     const lower = domainName.toLowerCase();
-    const withoutPrefix = lower.replace(/^bluestone\s+/, '');
+    
+    // Exact match or contains (e.g. "IAS Academy" matches "IAS")
     return userDomainsList.some(ud => {
-      const udClean = ud.replace(/^bluestone\s+/, '');
-      return udClean === withoutPrefix || ud === lower;
+      if (!ud) return false;
+      const udLower = ud.toLowerCase();
+      
+      // Basic check
+      if (lower === udLower || udLower.includes(lower) || lower.includes(udLower)) return true;
+      
+      // Cleanup prefixes for more robust matching
+      const cleanLower = lower.replace(/^(bluestone|bgoi)\s+/i, '').trim();
+      const cleanUd = udLower.replace(/^(bluestone|bgoi)\s+/i, '').trim();
+      
+      if (cleanLower === cleanUd || cleanUd.includes(cleanLower) || cleanLower.includes(cleanUd)) return true;
+      
+      // Special common abbreviations
+      if (cleanLower === 'ias' && cleanUd.includes('academy')) return true;
+      if (cleanUd === 'ias' && cleanLower.includes('academy')) return true;
+
+      return false;
     });
   };
   const getDefaultEnquiryDomain = () => {
@@ -555,18 +603,18 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   ].filter((item) => item.visible);
 
   const bgiSubMenu = [
-    { name: "All Enquiries", path: "/portal/bgi/all-enquiry" },
-    { name: "All Leads Status", path: "/portal/bgi/lead-status" },
+    { name: "All Enquiries (New)", path: "/portal/bgi/all-enquiry" },
+    { name: "All Leads Status (Confirmed Leads)", path: "/portal/bgi/lead-status" },
     { name: "Waiting for Confirmation", path: "/portal/bgi/waiting-confirmation" },
-    { name: "All Payment Status", path: "/portal/bgi/payment-status" },
-    { name: "All Invalid Enquiries", path: "/portal/bgi/invalid-enquiries" },
+    { name: "Enrollment Status", path: "/portal/bgi/payment-status" },
+    { name: "Closed Enquiries", path: "/portal/bgi/invalid-enquiries" },
   ];
   const buildDomainSubMenu = (domainPath) => [
-    { name: "All Enquiries", path: `${domainPath}?view=all` },
-    { name: "All Leads Status", path: `${domainPath}?view=lead-status` },
+    { name: "All Enquiries (New)", path: `${domainPath}?view=all` },
+    { name: "All Leads Status (Confirmed Leads)", path: `${domainPath}?view=lead-status` },
     { name: "Waiting for Confirmation", path: `${domainPath}?view=waiting` },
-    { name: "All Payment Status", path: `${domainPath}?view=payment` },
-    { name: "All Invalid Enquiries", path: `${domainPath}?view=invalid` },
+    { name: "Enrollment Status", path: `${domainPath}?view=payment` },
+    { name: "Closed Enquiries", path: `${domainPath}?view=invalid` },
   ];
 
   const isSubMenuPathActive = (subPath) => {
@@ -780,7 +828,10 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
           </div>
         </div>
       )}
-      <div className="portal-theme flex h-screen bg-red-50 overflow-hidden font-sans">
+      <div 
+        className="portal-theme flex h-screen bg-red-50 overflow-hidden font-sans"
+        onClickCapture={trackInteraction}
+      >
         {/* Sidebar */}
         <aside
           className={`${isSidebarOpen ? "w-72" : "w-20"} bg-white border-r border-slate-200 text-slate-800 flex flex-col transition-all duration-300 shrink-0 z-50 shadow-sm`}
@@ -823,16 +874,17 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
                   )}
                 </Link>
               ))}
-            {(isSuperAdmin || userDomainsList.length > 1) && (
+            {(isAdminTier || userDomainsList.length > 0) && (
               <div>
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    if (!isSidebarOpen) setIsSidebarOpen(true);
                     setIsBgiMenuOpen((prev) => {
                       const next = !prev;
                       if (next) setOpenDomainMenus({});
                       return next;
-                    })
-                  }
+                    });
+                  }}
                   className={`w-full flex items-center gap-4 px-6 py-3 transition-all ${location.pathname.startsWith("/portal/bgi/")
                     ? "bg-red-50 text-red-600 border-r-4 border-red-600"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -1465,6 +1517,7 @@ ${isSelected
                         {cat.category_name}
                       </option>
                     ))}
+                    <option value="Other">Other (Custom)</option>
                   </select>
                   {validationErrors.category && (
                     <p className="text-[10px] text-red-500 font-bold uppercase">
@@ -1477,31 +1530,44 @@ ${isSelected
                   <label className="text-[10px] font-black text-slate-400 uppercase">
                     Interested In
                   </label>
-                  <select
-                    value={enquiryData.interested_in}
-                    onChange={(e) => {
-                      setValidationErrors((prev) => ({
-                        ...prev,
-                        interested_in: null,
-                      }));
-                      setEnquiryData((prev) => ({
-                        ...prev,
-                        interested_in: e.target.value,
-                      }));
-                    }}
-                    disabled={!enquiryData.category}
-                    className={`w-full p-2.5 border rounded-lg bg-slate-50 text-sm ${validationErrors.interested_in ? "border-red-500" : ""
-                      }`}
-                  >
-                    <option value="">Select Interest</option>
-                    {availableCategories
-                      .find((c) => c.category_name === enquiryData.category)
-                      ?.values?.map((val) => (
-                        <option key={val.id} value={val.sub_value}>
-                          {val.sub_value}
-                        </option>
-                      ))}
-                  </select>
+                  {enquiryData.category === "Other" ? (
+                    <input
+                      type="text"
+                      placeholder="Specify your interest manually..."
+                      value={enquiryData.interested_in}
+                      onChange={(e) => {
+                        setValidationErrors((prev) => ({ ...prev, interested_in: null }));
+                        setEnquiryData((prev) => ({ ...prev, interested_in: e.target.value }));
+                      }}
+                      className={`w-full p-2.5 border rounded-lg bg-slate-50 text-sm outline-none focus:ring-2 ${validationErrors.interested_in ? "border-red-500 ring-red-500/20" : "ring-red-500/20"}`}
+                    />
+                  ) : (
+                    <select
+                      value={enquiryData.interested_in}
+                      onChange={(e) => {
+                        setValidationErrors((prev) => ({
+                          ...prev,
+                          interested_in: null,
+                        }));
+                        setEnquiryData((prev) => ({
+                          ...prev,
+                          interested_in: e.target.value,
+                        }));
+                      }}
+                      disabled={!enquiryData.category}
+                      className={`w-full p-2.5 border rounded-lg bg-slate-50 text-sm ${validationErrors.interested_in ? "border-red-500" : ""
+                        }`}
+                    >
+                      <option value="">Select Interest</option>
+                      {availableCategories
+                        .find((c) => c.category_name === enquiryData.category)
+                        ?.values?.map((val) => (
+                          <option key={val.id} value={val.sub_value}>
+                            {val.sub_value}
+                          </option>
+                        ))}
+                    </select>
+                  )}
                   {validationErrors.interested_in && (
                     <p className="text-[10px] text-red-500 font-bold uppercase">
                       {validationErrors.interested_in}

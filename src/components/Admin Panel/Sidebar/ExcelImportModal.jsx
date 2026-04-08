@@ -214,7 +214,7 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                   <Table size={14} className="text-slate-400" />
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Data Preview</span>
                 </div>
-                <div className="overflow-x-auto max-h-[400px]">
+                <div className="max-h-[400px]">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead className="sticky top-0 bg-white shadow-sm">
                       <tr className="border-b border-slate-100">
@@ -244,9 +244,9 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                                 <AlertCircle size={16} className="text-red-500" title="Missing Name or Phone" />
                               )}
                             </td>
-                            <td className="p-3 font-bold text-slate-700">{row.student_name || <span className="text-red-400 italic font-normal">Missing</span>}</td>
+                            <td className="p-3 font-bold text-slate-700 whitespace-normal break-words">{row.student_name || <span className="text-red-400 italic font-normal">Missing</span>}</td>
                             <td className="p-3 text-slate-600">{row.phone || <span className="text-red-400 italic">Missing</span>}</td>
-                            <td className="p-3 text-slate-600">{row.email || "-"}</td>
+                            <td className="p-3 text-slate-600 whitespace-normal break-all">{row.email || "-"}</td>
                             <td className="p-3 text-slate-600">
                               <input
                                 type="text"
@@ -259,7 +259,7 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
                                 className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-emerald-500 focus:outline-none py-1"
                               />
                             </td>
-                            <td className="p-3 text-slate-600">{row.interested_in || "-"}</td>
+                            <td className="p-3 text-slate-600 whitespace-normal break-words">{row.interested_in || "-"}</td>
                           </tr>
                         ))
                       ) : (

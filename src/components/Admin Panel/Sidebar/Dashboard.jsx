@@ -4,8 +4,19 @@ import {
     Users, PhoneCall, GraduationCap, XCircle,
     AlertCircle,
     Calendar, Filter, RefreshCcw,
-    ChevronUp, ChevronDown
+    ChevronUp, ChevronDown, BarChart3, TrendingUp
 } from 'lucide-react';
+import {
+    AreaChart,
+    Area,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+    BarChart,
+    Bar
+} from 'recharts';
 import LoadingScreen from '../Layout/LoadingScreen';
 import Pagination from '../Layout/Pagination';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
@@ -27,6 +38,42 @@ const Dashboard = ({ user }) => {
     const [globalFilter, setGlobalFilter] = useState('All');
     const [appliedGlobalFilter, setAppliedGlobalFilter] = useState('All');
     const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
+    const [allStaff, setAllStaff] = useState([]);
+    const [selectedStaffId, setSelectedStaffId] = useState('All');
+
+    // Helper to get today's date in IST (YYYY-MM-DD)
+    const getISTDateStr = () => {
+        try {
+            return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        } catch (e) {
+            // Fallback for older browsers
+            return new Date().toISOString().split('T')[0];
+        }
+    };
+
+    const istToday = getISTDateStr();
+
+    const [trendRange, setTrendRange] = useState('day');
+    const [trendData, setTrendData] = useState([]);
+    const [isTrendLoading, setIsTrendLoading] = useState(false);
+    const [trendStartDate, setTrendStartDate] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    });
+    const [trendEndDate, setTrendEndDate] = useState(istToday);
+    const [trendHistoryDate, setTrendHistoryDate] = useState(istToday);
+    const [trendStatus, setTrendStatus] = useState('All');
+
+    // --- Applied States (The actual filters sent to API) ---
+    const [appliedTrendRange, setAppliedTrendRange] = useState('day');
+    const [appliedTrendHistoryDate, setAppliedTrendHistoryDate] = useState(istToday);
+    const [appliedTrendStartDate, setAppliedTrendStartDate] = useState(trendStartDate);
+    const [appliedTrendEndDate, setAppliedTrendEndDate] = useState(istToday);
+    const [appliedStaffId, setAppliedStaffId] = useState('All');
+    // Global filter already has appliedGlobalFilter state
 
     // Pagination States
     const [todayPage, setTodayPage] = useState(1);
@@ -35,6 +82,11 @@ const Dashboard = ({ user }) => {
     const [statusPage, setStatusPage] = useState(1);
     const [statusLimit, setStatusLimit] = useState(5);
     const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
+
+    // Visibility States
+    const [isStatsExpanded, setIsStatsExpanded] = useState(true);
+    const [isGraphExpanded, setIsGraphExpanded] = useState(false);
+    const [isTablesExpanded, setIsTablesExpanded] = useState(true);
 
     const getTier = (u) => {
         if (u?.tier) return u.tier;
@@ -45,6 +97,7 @@ const Dashboard = ({ user }) => {
     };
     const isSuperAdmin = getTier(user) === 'SUPER_ADMIN';
     const isAdminTier = getTier(user) === 'ADMIN' || isSuperAdmin;
+    const isStaffUser = getTier(user) === 'STAFF';
 
     const getUserDomains = (domainStr) => {
         if (!domainStr) return [];
@@ -86,35 +139,75 @@ const Dashboard = ({ user }) => {
         else if (status === 'enrolled') viewQuery = `?view=lead-status&status=${encodeURIComponent('Enrolled')}`;
 
         navigate(`/portal/domain/${slug}${viewQuery}`, {
-            state: { focusLeadId: lead.id },
+            state: { 
+                focusLeadId: lead.id,
+                focusLeadCode: lead.lead_code || lead.id 
+            },
         });
     };
 
-    const handleCardClick = (cardType) => {
-        const domainQuery = isSuperAdmin && appliedGlobalFilter !== 'All'
-            ? `?domain=${encodeURIComponent(appliedGlobalFilter)}`
+    const handleCardClick = (cardType, isPeriodPerformance = false) => {
+        // 1. Determine if we use the Global BGI route or the Local Domain route
+        const useGlobalBgi = isSuperAdmin || (isAdminTier && hasMultipleDomains) || (isStaffUser && userDomainsList.length > 1);
+        const slug = getSlug(user.domain);
+
+        // 2. Build common query params (Domain/Staff filters)
+        // Use applied filters to match dashboard data
+        const domainParam = (isSuperAdmin || (isAdminTier && hasMultipleDomains)) && appliedGlobalFilter !== 'All'
+            ? `domain=${encodeURIComponent(appliedGlobalFilter)}`
+            : '';
+        const staffParam = appliedStaffId && appliedStaffId !== 'All'
+            ? `assignedTo=${encodeURIComponent(appliedStaffId)}`
             : '';
 
-        if (isSuperAdmin || (isAdminTier && hasMultipleDomains)) {
-            if (cardType === 'totalEnquiry') navigate(`/portal/bgi/all-enquiry${domainQuery}`);
-            if (cardType === 'totalFollowup') navigate(`/portal/bgi/lead-status${domainQuery}`);
-            if (cardType === 'totalAdmission') navigate(`/portal/bgi/lead-status${domainQuery ? `${domainQuery}&status=${encodeURIComponent('Enrolled')}` : `?status=${encodeURIComponent('Enrolled')}`}`);
-            if (cardType === 'totalPending') navigate(`/portal/bgi/waiting-confirmation${domainQuery}`);
-            if (cardType === 'totalInvalid') navigate(`/portal/bgi/invalid-enquiries${domainQuery}`);
-            if (cardType === 'todayPending') navigate(`/portal/bgi/waiting-confirmation?today=1${domainQuery ? `&${domainQuery.slice(1)}` : ''}`);
-            if (cardType === 'todayInvalid') navigate(`/portal/bgi/invalid-enquiries?today=1${domainQuery ? `&${domainQuery.slice(1)}` : ''}`);
-            return;
+        // 3. Add Period Filters
+        let periodParams = '';
+        if (isPeriodPerformance) {
+            if (appliedTrendRange === 'day') {
+                if (appliedTrendHistoryDate === istToday) {
+                    periodParams = 'today=1';
+                } else {
+                    periodParams = `date=${appliedTrendHistoryDate}`;
+                }
+            } else if (appliedTrendRange === 'custom') {
+                periodParams = `startDate=${appliedTrendStartDate}&endDate=${appliedTrendEndDate}`;
+            } else {
+                // For week, month, year - dashboard handles these as ranges ending today
+                // We'll calculate the relative start date or pass a range
+                const today = new Date(istToday);
+                let start = new Date(istToday);
+                if (appliedTrendRange === 'week') start.setDate(today.getDate() - 7);
+                else if (appliedTrendRange === 'month') start.setDate(today.getDate() - 30);
+                else if (appliedTrendRange === 'year') start.setDate(today.getDate() - 365);
+                
+                const startStr = start.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+                periodParams = `startDate=${startStr}&endDate=${istToday}`;
+            }
         }
 
-        // Non-super-admin (and not multi-domain admin): open their specific domain table
-        const slug = getSlug(userDomainsList[0] || user.domain);
-        if (cardType === 'totalFollowup') navigate(`/portal/domain/${slug}?view=lead-status`);
-        else if (cardType === 'totalAdmission') navigate(`/portal/domain/${slug}?view=lead-status&status=${encodeURIComponent('Enrolled')}`);
-        else if (cardType === 'totalPending') navigate(`/portal/domain/${slug}?view=waiting`);
-        else if (cardType === 'totalInvalid') navigate(`/portal/domain/${slug}?view=invalid`);
-        else if (cardType === 'todayInvalid') navigate(`/portal/domain/${slug}?view=invalid&today=1`);
-        else if (cardType === 'todayPending') navigate(`/portal/domain/${slug}?view=waiting&today=1`);
-        else navigate(`/portal/domain/${slug}`);
+        const buildQuery = (existingParams = []) => {
+            const all = [...existingParams, domainParam, staffParam, periodParams].filter(Boolean).join('&');
+            return all ? `?${all}` : '';
+        };
+
+        // 4. Navigate based on Route Type
+        if (useGlobalBgi) {
+            if (cardType === 'totalEnquiry') navigate(`/portal/bgi/all-enquiry${buildQuery()}`);
+            else if (cardType === 'totalFollowup') navigate(`/portal/bgi/lead-status${buildQuery()}`);
+            else if (cardType === 'totalAdmission') navigate(`/portal/bgi/payment-status${buildQuery()}`);
+            else if (cardType === 'totalPending') navigate(`/portal/bgi/waiting-confirmation${buildQuery()}`);
+            else if (cardType === 'totalInvalid') navigate(`/portal/bgi/invalid-enquiries${buildQuery()}`);
+        } else {
+            // Single Domain Staff Route
+            let view = 'all';
+            let extra = [];
+            if (cardType === 'totalFollowup') view = 'lead-status';
+            else if (cardType === 'totalAdmission') { view = 'payment'; }
+            else if (cardType === 'totalPending') view = 'waiting';
+            else if (cardType === 'totalInvalid') view = 'invalid';
+
+            navigate(`/portal/domain/${slug}${buildQuery(['view=' + view, ...extra])}`);
+        }
     };
 
     const fetchListLeads = useCallback(async (type, domain) => {
@@ -149,7 +242,7 @@ const Dashboard = ({ user }) => {
 
                 if (isSuperAdmin) {
                     setDomains(domainNames);
-                } else if (isAdminTier && hasMultipleDomains) {
+                } else if (hasMultipleDomains) {
                     const filtered = domainNames.filter(d => userDomainsList.includes(d));
                     setDomains(filtered);
                 }
@@ -160,9 +253,33 @@ const Dashboard = ({ user }) => {
         fetchDomains();
     }, [isSuperAdmin, isAdminTier, hasMultipleDomains, user.domain]);
 
-    const fetchMetric = useCallback(async (timeframe, type, domain) => {
+    useEffect(() => {
+        const fetchStaffList = async () => {
+            if (!user) return; 
+            try {
+                // For non-super admins, the backend already handles filtering by their authorized domains.
+                // We pass the currently selected domain filter if available.
+                const domainParam = (isSuperAdmin || hasMultipleDomains) ? appliedGlobalFilter : (user.domain || 'All');
+                const res = await fetch(`${API_BASE_URL_PORTAL}/api/dashboard/staff-list?domain=${encodeURIComponent(domainParam)}`, {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                const data = await res.json();
+                setAllStaff(Array.isArray(data) ? data : []);
+            } catch (err) {
+                console.error("Staff fetch error:", err);
+            }
+        };
+        fetchStaffList();
+    }, [isSuperAdmin, appliedGlobalFilter, user, hasMultipleDomains]);
+
+    const fetchMetric = useCallback(async (timeframe, type, domain, staffId, date, startDate, endDate) => {
         try {
-            const res = await fetch(`${API_BASE_URL_PORTAL}/api/dashboard/stats/${timeframe}/${type}?domain=${domain}`, {
+            let url = `${API_BASE_URL_PORTAL}/api/dashboard/stats/${timeframe}/${type}?domain=${domain}`;
+            if (staffId && staffId !== 'All') url += `&userId=${staffId}`;
+            if (timeframe === 'history' && date) url += `&date=${date}`;
+            if (timeframe === 'custom' && startDate && endDate) url += `&startDate=${startDate}&endDate=${endDate}`;
+
+            const res = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             const result = await res.json();
@@ -170,7 +287,7 @@ const Dashboard = ({ user }) => {
         } catch { return 0; }
     }, []);
 
-    const fetchAllEnquiries = useCallback(async (domain) => {
+    const fetchAllEnquiries = useCallback(async (domain, staffId) => {
         try {
             const params = new URLSearchParams({
                 view: 'all',
@@ -184,6 +301,8 @@ const Dashboard = ({ user }) => {
                 sort_by: 'created_at',
                 sort_order: 'desc',
             });
+            if (staffId && staffId !== 'All') params.append('assignedTo', staffId);
+
             const res = await fetch(`${API_BASE_URL_PORTAL}/api/bgi/leads?${params.toString()}`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
@@ -195,94 +314,144 @@ const Dashboard = ({ user }) => {
         }
     }, []);
 
-    const refreshDashboardData = useCallback(async (showLoading = false) => {
-        if (showLoading) setIsLoading(true);
-        const domain = isSuperAdmin ? appliedGlobalFilter : user.domain;
-        try {
-            const [
-                totalEnquiry,
-                totalFollowup,
-                totalAdmission,
-                todayEnquiry,
-                todayFollowup,
-                todayAdmission,
-                allEnquiries,
-            ] = await Promise.all([
-                fetchMetric('total', 'enquiry', domain),
-                fetchMetric('total', 'followup', domain),
-                fetchMetric('total', 'admission', domain),
-                fetchMetric('today', 'enquiry', domain),
-                fetchMetric('today', 'followup', domain),
-                fetchMetric('today', 'admission', domain),
-                fetchAllEnquiries(domain),
-            ]);
+    const refreshDashboardData = useCallback(async (manualTrigger = false) => {
+        if (!hasInitialLoaded || manualTrigger) {
+            if (!hasInitialLoaded) setIsLoading(true);
+            else setIsRefreshing(true);
+        }
+        const domain = (isSuperAdmin || hasMultipleDomains) ? appliedGlobalFilter : user.domain;
 
-            const pendingRows = allEnquiries.filter((lead) => {
-                const st = String(lead.status || '').trim().toLowerCase();
-                return st !== 'follow up' && st !== 'enrolled' && st !== 'closed';
+        try {
+            const dashboardTimeframe = appliedTrendRange === 'day'
+                ? (appliedTrendHistoryDate === istToday ? 'today' : 'history')
+                : appliedTrendRange;
+
+            const statsParams = new URLSearchParams({
+                domain: domain,
+                userId: appliedStaffId,
+                timeframe: dashboardTimeframe,
+                date: appliedTrendHistoryDate,
+                startDate: appliedTrendStartDate,
+                endDate: appliedTrendEndDate
             });
-            const invalidRows = allEnquiries.filter((lead) => {
-                const st = String(lead.status || '').trim().toLowerCase();
-                return st === 'closed';
+
+            const statsRes = await fetch(`${API_BASE_URL_PORTAL}/api/dashboard/stats-bulk?${statsParams.toString()}`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
-            const totalPending = pendingRows.length;
-            const totalInvalid = invalidRows.length;
-            const now = new Date();
-            const todayPending = pendingRows.filter((lead) => {
-                const d = new Date(lead.created_at);
-                return (
-                    d.getFullYear() === now.getFullYear() &&
-                    d.getMonth() === now.getMonth() &&
-                    d.getDate() === now.getDate()
-                );
-            }).length;
-            const todayInvalid = invalidRows.filter((lead) => {
-                const d = new Date(lead.created_at);
-                return (
-                    d.getFullYear() === now.getFullYear() &&
-                    d.getMonth() === now.getMonth() &&
-                    d.getDate() === now.getDate()
-                );
-            }).length;
+            const statsData = await statsRes.json();
 
             setStats({
-                totalEnquiry,
-                totalFollowup,
-                totalAdmission,
-                totalPending,
-                totalInvalid,
-                todayEnquiry,
-                todayFollowup,
-                todayAdmission,
-                todayPending,
-                todayInvalid,
+                totalEnquiry: statsData.totals.enquiry,
+                totalFollowup: statsData.totals.followup,
+                totalAdmission: statsData.totals.admission,
+                totalPending: statsData.totals.pending,
+                totalInvalid: statsData.totals.invalid,
+                todayEnquiry: statsData.periods.enquiry,
+                todayFollowup: statsData.periods.followup,
+                todayAdmission: statsData.periods.admission,
+                todayPending: statsData.periods.pending,
+                todayInvalid: statsData.periods.invalid,
             });
 
-            await fetchListLeads('today', domain);
-
-            const todayConvertedRows = allEnquiries.filter((lead) => {
-                const st = String(lead.status || '').trim().toLowerCase();
-                const d = new Date(lead.created_at);
-                const isToday =
-                    d.getFullYear() === now.getFullYear() &&
-                    d.getMonth() === now.getMonth() &&
-                    d.getDate() === now.getDate();
-
-                if (!isToday) return false;
-
-                // User says: Today's enquiry show only status new, 
-                // if updated status new to other it should show only status table
-                return (st !== 'new');
+            const listParams = new URLSearchParams({
+                filterType: 'today',
+                domain: domain,
+                timeframe: dashboardTimeframe,
+                date: appliedTrendHistoryDate,
+                startDate: appliedTrendStartDate,
+                endDate: appliedTrendEndDate
             });
-            setStatusLeads(todayConvertedRows);
+            if (appliedStaffId && appliedStaffId !== 'All') listParams.append('userId', appliedStaffId);
+
+            const listRes = await fetch(`${API_BASE_URL_PORTAL}/api/dashboard/leads-filter?${listParams.toString()}`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const listData = await listRes.json();
+            setTodayLeads(Array.isArray(listData) ? listData : []);
+
+            const statusParams = new URLSearchParams({
+                filterType: 'updated',
+                domain: domain,
+                timeframe: dashboardTimeframe,
+                date: appliedTrendHistoryDate,
+                startDate: appliedTrendStartDate,
+                endDate: appliedTrendEndDate
+            });
+            if (appliedStaffId && appliedStaffId !== 'All') statusParams.append('userId', appliedStaffId);
+
+            const statusRes = await fetch(`${API_BASE_URL_PORTAL}/api/dashboard/leads-filter?${statusParams.toString()}`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const statusData = await statusRes.json();
+            setStatusLeads(Array.isArray(statusData) ? statusData : []);
+        } catch (err) {
+            console.error("Dashboard refresh error:", err);
         } finally {
-            if (showLoading) setIsLoading(false);
+            setIsLoading(false);
+            setIsRefreshing(false);
+            setHasInitialLoaded(true);
         }
-    }, [appliedGlobalFilter, fetchMetric, fetchAllEnquiries, fetchListLeads, isSuperAdmin, user.domain]);
+    }, [appliedGlobalFilter, fetchAllEnquiries, isSuperAdmin, hasMultipleDomains, user.domain, appliedStaffId, appliedTrendRange, appliedTrendHistoryDate, appliedTrendStartDate, appliedTrendEndDate]);
+
+    const fetchTrendData = useCallback(async () => {
+        setIsTrendLoading(true);
+        const domain = (isSuperAdmin || hasMultipleDomains) ? appliedGlobalFilter : user.domain;
+        try {
+            let url = `${API_BASE_URL_PORTAL}/api/dashboard/enquiry-trends?range=${appliedTrendRange}&domain=${domain}`;
+            if (appliedStaffId && appliedStaffId !== 'All') url += `&userId=${appliedStaffId}`;
+
+            if (appliedTrendRange === 'custom') {
+                url += `&startDate=${appliedTrendStartDate}&endDate=${appliedTrendEndDate}`;
+            } else if (appliedTrendRange === 'day' && appliedTrendHistoryDate !== istToday) {
+                // If it's the 'day' view but a different date is selected, treat as historical day
+                url += `&date=${appliedTrendHistoryDate}`;
+            }
+
+            const res = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTrendData(data);
+            }
+        } catch (err) {
+            console.error("Trend fetch error:", err);
+        } finally {
+            setIsTrendLoading(false);
+        }
+    }, [appliedTrendRange, appliedTrendStartDate, appliedTrendEndDate, appliedTrendHistoryDate, appliedGlobalFilter, isSuperAdmin, user.domain, appliedStaffId]);
 
     useEffect(() => {
-        refreshDashboardData(true);
-    }, [refreshDashboardData]);
+        fetchTrendData();
+    }, [fetchTrendData]);
+
+    const handleApplyFilters = () => {
+        setAppliedTrendRange(trendRange);
+        setAppliedTrendHistoryDate(trendHistoryDate);
+        setAppliedTrendStartDate(trendStartDate);
+        setAppliedTrendEndDate(trendEndDate);
+        setAppliedStaffId(selectedStaffId);
+        setAppliedGlobalFilter(globalFilter);
+    };
+
+    const isFilterDirty =
+        trendRange !== appliedTrendRange ||
+        trendHistoryDate !== appliedTrendHistoryDate ||
+        trendStartDate !== appliedTrendStartDate ||
+        trendEndDate !== appliedTrendEndDate ||
+        selectedStaffId !== appliedStaffId ||
+        globalFilter !== appliedGlobalFilter;
+
+    useEffect(() => {
+        // Auto-fetch if NOT in custom range
+        if (trendRange !== 'custom') {
+            handleApplyFilters();
+        }
+    }, [trendRange, trendHistoryDate, selectedStaffId, globalFilter]);
+
+    useEffect(() => {
+        refreshDashboardData(false);
+    }, [refreshDashboardData, appliedGlobalFilter, appliedStaffId, appliedTrendRange, appliedTrendHistoryDate, appliedTrendStartDate, appliedTrendEndDate]);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -294,6 +463,26 @@ const Dashboard = ({ user }) => {
     if (isLoading) {
         return <LoadingScreen message="Loading dashboard data..." fullPage={false} />;
     }
+
+    const StatCard = ({ title, value, icon, color, onClick, small }) => (
+        <div
+            onClick={onClick}
+            className={`${color} rounded-2xl p-4 shadow-sm border border-white/10 hover:scale-[1.02] transition-all cursor-pointer group relative overflow-hidden`}
+        >
+            <div className="flex justify-between items-start relative z-10">
+                <div>
+                    <p className="text-[9px] font-black text-white/60 uppercase tracking-widest mb-1">{title}</p>
+                    <h3 className={`${small ? 'text-lg' : 'text-3xl'} font-black text-white tracking-tighter`}>{value}</h3>
+                </div>
+                <div className={`p-2 bg-white/20 rounded-lg text-white`}>
+                    {icon}
+                </div>
+            </div>
+            <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform">
+                {icon}
+            </div>
+        </div>
+    );
 
     const MiniStatCard = ({ title, value, label, color, bgColor, onClick }) => (
         <button onClick={onClick} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm text-left hover:shadow-md transition-all">
@@ -312,114 +501,413 @@ const Dashboard = ({ user }) => {
 
     return (
         <div className="p-6 space-y-8 bg-slate-50 min-h-screen">
-            <header className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-2xl font-black text-slate-800 tracking-tight">Welcome, {user.name}</h1>
-                    <p className="text-slate-500 font-medium text-xs uppercase tracking-widest">{user.role} • {user.domain}</p>
-                </div>
-                {(isSuperAdmin || (isAdminTier && hasMultipleDomains)) && (
-                    <div className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl shadow-sm">
-                        <Filter size={14} className="text-slate-400" />
-                        <select
-                            value={globalFilter}
-                            onChange={(e) => {
-                                const selected = e.target.value;
-                                setGlobalFilter(selected);
-                                setAppliedGlobalFilter(selected);
-                            }}
-                            className="bg-transparent font-bold text-xs outline-none"
-                        >
-                            {isSuperAdmin && <option value="All">All Domains</option>}
-                            {!isSuperAdmin && domains.length > 1 && <option value="All">All Assigned Domains</option>}
-                            {domains.map((d) => <option key={d} value={d}>{d}</option>)}
-                        </select>
+            <header className="flex flex-col gap-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard Control</h1>
+                        <p className="text-slate-500 font-medium text-xs uppercase tracking-widest">{user.name} • {user.role} • {user.domain}</p>
                     </div>
-                )}
+
+                    <div className="flex flex-nowrap items-center gap-3">
+                        {/* Show Staff Filter for Admins and Super Admins, or if Staff list is explicitly populated (e.g. for team views) */}
+                        {!isStaffUser && (
+                            <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-xl shadow-sm">
+                                <Users size={14} className="text-blue-500" />
+                                <select
+                                    value={selectedStaffId}
+                                    onChange={(e) => setSelectedStaffId(e.target.value)}
+                                    className="bg-transparent font-black text-[10px] outline-none uppercase tracking-wider min-w-[120px] cursor-pointer"
+                                >
+                                    <option value="All">All Staff</option>
+                                    {allStaff.map(s => (
+                                        <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {(isSuperAdmin || hasMultipleDomains) && (
+                            <div className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl shadow-sm">
+                                <Filter size={14} className="text-slate-400" />
+                                <select
+                                    value={globalFilter}
+                                    onChange={(e) => {
+                                        const selected = e.target.value;
+                                        setGlobalFilter(selected);
+                                        setAppliedGlobalFilter(selected);
+                                    }}
+                                    className="bg-transparent font-bold text-xs outline-none"
+                                >
+                                    {isSuperAdmin && <option value="All">All Domains</option>}
+                                    {!isSuperAdmin && domains.length > 1 && <option value="All">Assigned Domains</option>}
+                                    {domains.map((d) => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                            </div>
+                        )}
+
+                        <div
+                            className="flex items-center gap-2 bg-blue-600 px-4 py-2 rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all cursor-pointer group"
+                            onClick={() => refreshDashboardData(true)}
+                        >
+                            <RefreshCcw size={14} className={`text-white ${(isRefreshing || isTrendLoading) ? 'animate-spin' : 'group-hover:rotate-180 transition-all duration-500'}`} />
+                            {isRefreshing && <span className="text-[10px] text-white font-black uppercase animate-pulse">Syncing...</span>}
+                        </div>
+                    </div>
+                </div>
+
+                {/* --- GLOBAL TIMEFRAME CONTROLS --- */}
+                <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
+                        {['day', 'week', 'month', 'year', 'custom'].map((r) => (
+                            <button
+                                key={r}
+                                onClick={() => setTrendRange(r)}
+                                className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${trendRange === r
+                                    ? 'bg-white text-blue-600 shadow-sm border border-slate-200'
+                                    : 'text-slate-400 hover:text-slate-600'
+                                    }`}
+                            >
+                                {r}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="h-6 w-[1px] bg-slate-200 hidden sm:block"></div>
+
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl">
+                        <Calendar size={14} className="text-blue-500" />
+                        <input
+                            type="date"
+                            value={trendHistoryDate}
+                            max={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => {
+                                setTrendHistoryDate(e.target.value);
+                                setTrendRange('day');
+                            }}
+                            className="bg-transparent font-black text-[10px] outline-none uppercase tracking-wider cursor-pointer text-slate-600"
+                        />
+                    </div>
+
+                    {trendRange === 'custom' && (
+                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 duration-300">
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">From</span>
+                                <input
+                                    type="date"
+                                    value={trendStartDate}
+                                    onChange={(e) => setTrendStartDate(e.target.value)}
+                                    className="text-[10px] font-bold text-slate-600 outline-none border-none bg-transparent w-28"
+                                />
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">To</span>
+                                <input
+                                    type="date"
+                                    value={trendEndDate}
+                                    onChange={(e) => setTrendEndDate(e.target.value)}
+                                    className="text-[10px] font-bold text-slate-600 outline-none border-none bg-transparent w-28"
+                                />
+                            </div>
+                            <div className="ml-auto flex items-center gap-4">
+                                {trendRange === 'custom' && isFilterDirty && (
+                                    <button
+                                        onClick={handleApplyFilters}
+                                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-200 flex items-center gap-2"
+                                    >
+                                        <Filter size={12} /> Apply Search
+                                    </button>
+                                )}
+
+                            </div>
+                        </div>
+                    )}
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                        Showing: <span className="text-blue-600">
+                            {appliedTrendRange === 'day' ? `Selected Date (${appliedTrendHistoryDate})` :
+                                appliedTrendRange === 'custom' ? `${appliedTrendStartDate} to ${appliedTrendEndDate}` :
+                                    `Current ${appliedTrendRange}`}
+                        </span>
+                    </p>
+
+                </div>
             </header>
 
 
             {/* Stat Cards Grid */}
             <div className="space-y-6">
-                {/* Tier 1: Life-time Totals (Large) */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                    <StatCard title="Total Enquiry" value={stats.totalEnquiry} icon={<Users />} color="bg-gradient-to-br from-rose-700 to-rose-500" onClick={() => handleCardClick('totalEnquiry')} />
-                    <StatCard title="Total Followup" value={stats.totalFollowup} icon={<PhoneCall />} color="bg-gradient-to-br from-orange-600 to-amber-500" onClick={() => handleCardClick('totalFollowup')} />
-                    <StatCard title="Total Admission" value={stats.totalAdmission} icon={<GraduationCap />} color="bg-gradient-to-br from-emerald-700 to-emerald-500" onClick={() => handleCardClick('totalAdmission')} />
-                    <StatCard title="Total Pendings" value={stats.totalPending} icon={<AlertCircle />} color="bg-gradient-to-br from-slate-800 to-slate-600" onClick={() => handleCardClick('totalPending')} />
-                    <StatCard title="Total Invalid Enquiries" value={stats.totalInvalid} icon={<XCircle />} color="bg-gradient-to-br from-red-700 to-red-500" onClick={() => handleCardClick('totalInvalid')} />
+                {/* Header for Stat Cards Section */}
+                <div
+                    className="flex items-center justify-between group cursor-pointer"
+                    onClick={() => setIsStatsExpanded(!isStatsExpanded)}
+                >
+                    <div className="flex items-center gap-3">
+                        <BarChart3 size={16} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-slate-600 transition-colors">
+                            {isStatsExpanded ? "Overview Summary" : "Expand Summary stats"}
+                        </h4>
+                    </div>
+                    <div className="bg-white border border-slate-200 p-1 rounded-lg text-slate-400 group-hover:text-blue-600 group-hover:border-blue-200 transition-all shadow-sm">
+                        {isStatsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </div>
                 </div>
 
-                {/* Tier 2: Today's Snapshot (Compact) */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                    <MiniStatCard
-                        title="Today's Enquiries"
-                        value={stats.todayEnquiry}
-                        color="text-red-600"
-                        bgColor="bg-red-100"
-                        onClick={() => handleCardClick('totalEnquiry')}
-                    />
-                    <MiniStatCard
-                        title="Today's Followups"
-                        value={stats.todayFollowup}
-                        color="text-orange-600"
-                        bgColor="bg-orange-100"
-                        onClick={() => handleCardClick('totalFollowup')}
-                    />
-                    <MiniStatCard
-                        title="Today's Admissions"
-                        value={stats.todayAdmission}
-                        color="text-emerald-600"
-                        bgColor="bg-emerald-100"
-                        onClick={() => handleCardClick('totalAdmission')}
-                    />
-                    <MiniStatCard
-                        title="Today's Pendings"
-                        value={stats.todayPending}
-                        color="text-slate-700"
-                        bgColor="bg-slate-200"
-                        onClick={() => handleCardClick('todayPending')}
-                    />
-                    <MiniStatCard
-                        title="Today's Invalid Enquiries"
-                        value={stats.todayInvalid}
-                        color="text-rose-700"
-                        bgColor="bg-rose-100"
-                        onClick={() => handleCardClick('todayInvalid')}
-                    />
-                </div>
+                {isStatsExpanded && (
+                    <div className={`space-y-6 animate-in fade-in zoom-in-95 duration-300 ${isRefreshing ? 'opacity-60 pointer-events-none' : ''}`}>
+                        {/* Tier 1: Life-time Totals (Large) */}
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                            <StatCard title="Total Enquiry" value={stats.totalEnquiry} icon={<Users size={24} />} color="bg-gradient-to-br from-rose-700 to-rose-500" onClick={() => handleCardClick('totalEnquiry')} />
+                            <StatCard title="Total Confirmed Leads" value={stats.totalFollowup} icon={<PhoneCall size={24} />} color="bg-gradient-to-br from-orange-600 to-amber-500" onClick={() => handleCardClick('totalFollowup')} />
+                            <StatCard title="Total Enrolled" value={stats.totalAdmission} icon={<GraduationCap size={24} />} color="bg-gradient-to-br from-emerald-700 to-emerald-500" onClick={() => handleCardClick('totalAdmission')} />
+                            <StatCard title="Total Pendings" value={stats.totalPending} icon={<AlertCircle size={24} />} color="bg-gradient-to-br from-slate-800 to-slate-600" onClick={() => handleCardClick('totalPending')} />
+                            <StatCard title="Total Invalid" value={stats.totalInvalid} icon={<XCircle size={24} />} color="bg-gradient-to-br from-red-700 to-red-500" onClick={() => handleCardClick('totalInvalid')} />
+                        </div>
+
+                        {/* Tier 2: Period Snapshot (Large) */}
+                        <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
+                            <TrendingUp size={16} className="text-blue-500" />
+                            <h4 className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Period Performance ({trendRange})</h4>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                            <MiniStatCard
+                                title="Enquiries"
+                                value={stats.todayEnquiry}
+                                color="text-red-600"
+                                bgColor="bg-red-100"
+                                onClick={() => handleCardClick('totalEnquiry', true)}
+                            />
+                            <MiniStatCard
+                                title="Confirmed Leads"
+                                value={stats.todayFollowup}
+                                color="text-orange-600"
+                                bgColor="bg-orange-100"
+                                onClick={() => handleCardClick('totalFollowup', true)}
+                            />
+                            <MiniStatCard
+                                title="Enrolled"
+                                value={stats.todayAdmission}
+                                color="text-emerald-600"
+                                bgColor="bg-emerald-100"
+                                onClick={() => handleCardClick('totalAdmission', true)}
+                            />
+                            <MiniStatCard
+                                title="Pendings"
+                                value={stats.todayPending}
+                                color="text-slate-700"
+                                bgColor="bg-slate-200"
+                                onClick={() => handleCardClick('totalPending', true)}
+                            />
+                            <MiniStatCard
+                                title="Invalid"
+                                value={stats.todayInvalid}
+                                color="text-rose-700"
+                                bgColor="bg-rose-100"
+                                onClick={() => handleCardClick('totalInvalid', true)}
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Main Content Lists */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <LeadList
-                    title="Today's Enquiry" data={todayLeads} icon={<Calendar className="text-red-600" />} color="bg-red-50" badgeColor="bg-red-600"
-                    currentPage={todayPage} setCurrentPage={setTodayPage} pageSize={todayLimit} setPageSize={setTodayLimit} userTier={getTier(user)}
-                    onLeadClick={handleLeadClick}
-                    onRefresh={() => refreshDashboardData(false)}
-                />
-                <LeadList
-                    title="Today's Enquiry Status" data={statusLeads} icon={<AlertCircle className="text-red-600" />} color="bg-red-50" badgeColor="bg-red-600"
-                    currentPage={statusPage} setCurrentPage={setStatusPage} pageSize={statusLimit} setPageSize={setStatusLimit} userTier={getTier(user)}
-                    showRemarks={true}
-                    onLeadClick={handleLeadClick}
-                    onRefresh={() => refreshDashboardData(false)}
-                />
+            {/* Trends Graph Section */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center justify-between w-full">
+                        <div
+                            className="flex items-center gap-2 group cursor-pointer"
+                            onClick={() => setIsGraphExpanded(!isGraphExpanded)}
+                        >
+                            <BarChart3 size={18} className="text-blue-600 group-hover:scale-110 transition-transform" />
+                            <h3 className="text-lg font-black text-slate-800 tracking-tight uppercase group-hover:text-blue-600 transition-colors">Performance Chart</h3>
+                            <div className="ml-2 text-red-600 group-hover:text-blue-400 transition-colors">
+                                {isGraphExpanded ? <ChevronUp size={25} /> : <ChevronDown size={25} />}
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 hidden sm:block">Visualization of {trendRange} trends</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-sm">
+                        <Filter size={12} className="text-slate-400" />
+                        <select
+                            value={trendStatus}
+                            onChange={(e) => setTrendStatus(e.target.value)}
+                            className="bg-transparent font-black text-[10px] outline-none uppercase tracking-wider"
+                        >
+                            <option value="All">All Stats</option>
+                            <option value="total">Total Enquiries</option>
+                            <option value="followup">Follow-ups</option>
+                            <option value="admission">Admissions</option>
+                        </select>
+                    </div>
+                </div>
+
+                {isGraphExpanded && (
+                    <div className={`h-[350px] w-full pt-4 animate-in fade-in slide-in-from-top-4 duration-500 ${isRefreshing ? 'opacity-60 pointer-events-none' : ''}`}>
+                        {isTrendLoading ? (
+                            <div className="h-full flex items-center justify-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                <div className="flex flex-col items-center gap-2">
+                                    <RefreshCcw size={20} className="text-blue-200 animate-spin" />
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Updating graph...</span>
+                                </div>
+                            </div>
+                        ) : trendData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={trendData}>
+                                    <defs>
+                                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorFollow" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1} />
+                                            <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis
+                                        dataKey="label"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }}
+                                        dy={10}
+                                        tickFormatter={(val) => {
+                                            if (trendRange === 'day') {
+                                                const h = parseInt(val);
+                                                const nextH = h + 1;
+                                                const formatH = (hour) => {
+                                                    const hh = hour % 24;
+                                                    return hh > 12 ? hh - 12 : (hh === 0 ? 12 : hh);
+                                                };
+                                                return `${formatH(h)}-${formatH(nextH)}`;
+                                            }
+                                            if (trendRange === 'year') {
+                                                const [y, m] = val.split('-');
+                                                return new Date(y, m - 1).toLocaleString('default', { month: 'short' });
+                                            }
+                                            return val;
+                                        }}
+                                    />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }}
+                                    />
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: '#fff',
+                                            borderRadius: '12px',
+                                            border: '1px solid #e2e8f0',
+                                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                            padding: '12px'
+                                        }}
+                                        labelStyle={{ fontSize: '10px', fontWeight: 900, marginBottom: '8px', color: '#1e293b', textTransform: 'uppercase' }}
+                                        itemStyle={{ fontSize: '11px', fontWeight: 700, padding: '2px 0' }}
+                                        labelFormatter={(val) => {
+                                            if (trendRange === 'day') {
+                                                const h = parseInt(val);
+                                                const nextH = h + 1;
+                                                const formatH = (hour) => {
+                                                    const hh = hour % 24;
+                                                    const timeSuffix = hh >= 12 ? 'PM' : 'AM';
+                                                    const displayH = hh > 12 ? hh - 12 : (hh === 0 ? 12 : hh);
+                                                    return `${displayH} ${timeSuffix}`;
+                                                };
+                                                return `${formatH(h)} - ${formatH(nextH)}`;
+                                            }
+                                            return val;
+                                        }}
+                                    />
+                                    {(trendStatus === 'All' || trendStatus === 'total') && (
+                                        <Area
+                                            name="Total Enquiries"
+                                            type="monotone"
+                                            dataKey="total"
+                                            stroke="#3b82f6"
+                                            strokeWidth={3}
+                                            fillOpacity={1}
+                                            fill="url(#colorTotal)"
+                                            animationDuration={1500}
+                                        />
+                                    )}
+                                    {(trendStatus === 'All' || trendStatus === 'followup') && (
+                                        <Area
+                                            name="Follow-ups"
+                                            type="monotone"
+                                            dataKey="followup"
+                                            stroke="#f59e0b"
+                                            strokeWidth={2}
+                                            fillOpacity={1}
+                                            fill="url(#colorFollow)"
+                                            strokeDasharray="5 5"
+                                            animationDuration={1500}
+                                        />
+                                    )}
+                                    {(trendStatus === 'All' || trendStatus === 'admission') && (
+                                        <Area
+                                            name="Admissions"
+                                            type="monotone"
+                                            dataKey="admission"
+                                            stroke="#10b981"
+                                            strokeWidth={2}
+                                            fill="transparent"
+                                            animationDuration={1500}
+                                        />
+                                    )}
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="h-full flex items-center justify-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center px-6">
+                                    Not enough data to generate trends for the selected domain/range
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Main Content Lists Section Header */}
+            <div className="space-y-6">
+                <div
+                    className="flex items-center justify-between group cursor-pointer"
+                    onClick={() => setIsTablesExpanded(!isTablesExpanded)}
+                >
+                    <div className="flex items-center gap-3">
+                        <Users size={16} className="text-slate-400 group-hover:text-red-600 transition-colors" />
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-slate-600 transition-colors">
+                            {isTablesExpanded ? "Enquiry Tables" : "Expand Enquiry Tables"}
+                        </h4>
+                    </div>
+                    <div className="bg-white border border-slate-200 p-1 rounded-lg text-slate-400 group-hover:text-red-600 group-hover:border-red-200 transition-all shadow-sm">
+                        {isTablesExpanded ? <ChevronUp size={25} /> : <ChevronDown size={25} />}
+                    </div>
+                </div>
+
+                {isTablesExpanded && (
+                    <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 ${isRefreshing ? 'opacity-60 pointer-events-none' : ''}`}>
+                        <LeadList
+                            title={trendHistoryDate === istToday ? "Today's Enquiry" : `Enquiry on ${trendHistoryDate}`}
+                            data={todayLeads} icon={<Calendar className="text-red-600" />} color="bg-red-50" badgeColor="bg-red-600"
+                            currentPage={todayPage} setCurrentPage={setTodayPage} pageSize={todayLimit} setPageSize={setTodayLimit} userTier={getTier(user)}
+                            showRemarks={true}
+                            onLeadClick={handleLeadClick}
+                            onRefresh={() => refreshDashboardData(false)}
+                        />
+                        <LeadList
+                            title={trendHistoryDate === istToday ? "Today's Enquiry Status" : `Status Update on ${trendHistoryDate}`}
+                            data={statusLeads} icon={<AlertCircle className="text-red-600" />} color="bg-red-50" badgeColor="bg-red-600"
+                            currentPage={statusPage} setCurrentPage={setStatusPage} pageSize={statusLimit} setPageSize={setStatusLimit} userTier={getTier(user)}
+                            showRemarks={true}
+                            onLeadClick={handleLeadClick}
+                            onRefresh={() => refreshDashboardData(false)}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );
 };
 
 // Sub-components
-const StatCard = ({ title, value, icon, color, onClick }) => (
-    <button onClick={onClick} className={`${color} rounded-2xl p-6 shadow-lg text-white flex justify-between items-center transition-transform hover:scale-[1.02] text-left`}>
-        <div>
-            <p className="text-[10px] font-bold uppercase opacity-80">{title}</p>
-            <h3 className="text-3xl font-black">{value}</h3>
-        </div>
-        <div className="bg-white/20 p-3 rounded-xl">{icon}</div>
-    </button>
-);
-
 const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurrentPage, pageSize, setPageSize, userTier, showRemarks = false, onLeadClick, onRefresh }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showAllRows, setShowAllRows] = useState(false);
@@ -469,8 +957,8 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
         : sortedData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     const enableVerticalScroll =
-        (showAllRows && sortedData.length > 5) ||
-        (!showAllRows && pageSize > 5 && paginatedData.length > 5);
+        (showAllRows && sortedData.length > 10) ||
+        (!showAllRows && pageSize > 10 && paginatedData.length > 10);
 
     useEffect(() => {
         if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -525,7 +1013,7 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
 
             {/* Table Body */}
             <div
-                className={`flex-grow overflow-x-auto min-h-[350px] ${enableVerticalScroll ? 'max-h-[350px] overflow-y-auto' : ''}`}
+                className={`flex-grow min-h-[350px] ${enableVerticalScroll ? 'max-h-[350px] overflow-y-auto' : ''}`}
             >
                 <table className="w-full border-collapse">
                     <thead>
@@ -548,8 +1036,8 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
                             >
                                 {/* Name Cell */}
                                 <td className="py-3 px-4">
-                                    <p className="font-bold text-slate-800 text-sm">{lead.student_name}</p>
-                                    <p className="text-[8px] text-red-600 font-bold uppercase leading-none mt-0.5">{lead.domain}</p>
+                                    <p className="font-bold text-slate-800 text-sm whitespace-normal break-words">{lead.student_name}</p>
+                                    <p className="text-[8px] text-red-600 font-bold uppercase leading-tight mt-0.5 whitespace-normal break-words">{lead.domain}</p>
                                     <p className="text-[8px] text-slate-400 font-bold uppercase leading-none mt-1">{lead.lead_code || `#${lead.id}`}</p>
                                 </td>
 
@@ -558,7 +1046,7 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
 
                                     <div className="flex flex-col gap-0.5">
                                         <div className="flex items-center gap-1.5 text-slate-500">
-                                            <span className="text-[11px] font-medium truncate max-w-[150px]">{lead.email || '—'}</span>
+                                            <span className="text-[11px] font-medium whitespace-normal break-all">{lead.email || '—'}</span>
                                         </div>
                                         <div className="flex items-center gap-1.5 text-slate-700">
                                             <span className="text-[11px] font-bold">{lead.phone}</span>
@@ -567,25 +1055,25 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
                                 </td>
 
                                 {/* Status Cell */}
-                                <td className="py-3 px-4 text-center">
-                                    <span className="text-[9px] font-black px-2 py-1 rounded uppercase bg-slate-100 text-slate-600 group-hover:bg-white border border-transparent group-hover:border-slate-200 transition-all">
+                                <td className="py-2 px-3 text-center">
+                                    <span className="text-[10px] font-black px-2 py-1 rounded uppercase bg-slate-100 text-slate-600 group-hover:bg-white border border-transparent group-hover:border-slate-200 transition-all">
                                         {lead.status}
                                     </span>
                                 </td>
                                 {showRemarks && (
-                                    <td className="py-3 px-4">
-                                        <p className="text-[11px] text-slate-600 truncate max-w-[200px]">
+                                    <td className="py-2 px-3">
+                                        <p className="text-[11.5px] text-slate-600 font-medium whitespace-normal break-words min-w-[100px] leading-tight">
                                             {lead.remarks || '-'}
                                         </p>
                                     </td>
                                 )}
 
                                 {/* Assignment Cell */}
-                                <td className="py-3 px-4 text-right">
-                                    <p className="text-[9px] text-slate-400 font-bold uppercase leading-tight">
+                                <td className="py-2 px-3 text-right">
+                                    <p className="text-[9.5px] text-slate-400 font-bold uppercase leading-tight">
                                         {userTier === 'STAFF' ? 'From' : 'To'}
                                     </p>
-                                    <p className="text-[10px] text-slate-600 font-black truncate max-w-[100px] ml-auto">
+                                    <p className="text-[11px] text-slate-600 font-black whitespace-normal break-words ml-auto max-w-[100px] leading-tight">
                                         {userTier === 'STAFF' ? (lead.assigned_by_name || 'System') : (lead.assigned_to_name || 'Unassigned')}
                                     </p>
                                 </td>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { Search, RefreshCcw, History, Edit, X, Eye, Trash2, DeleteIcon, ChevronUp, ChevronDown } from "lucide-react";
@@ -13,7 +13,7 @@ import { BiExport } from "react-icons/bi";
 
 const viewConfig = {
   "all-enquiry": { apiView: "all", title: "All Enquiries", forcedStatus: "New" },
-  "lead-status": { apiView: "all", title: "All Leads Status", forcedStatus: "Follow Up,Enrolled" },
+  "lead-status": { apiView: "all", title: "All Confirmed Leads Status", forcedStatus: "Follow Up" },
   "waiting-confirmation": { apiView: "all", title: "Waiting for Confirmation", forcedStatus: "Waiting for Confirmation" },
   pendings: { apiView: "all", title: "Waiting for Confirmation", forcedStatus: "Waiting for Confirmation" },
   "payment-status": { apiView: "payment", title: "All Payment Status" },
@@ -46,6 +46,7 @@ const BGILeads = ({ user }) => {
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [bulkAssignStaff, setBulkAssignStaff] = useState("");
+  const hasFocusedLeadRef = useRef(false);
 
   const [search, setSearch] = useState("");
   const [domain, setDomain] = useState("All");
@@ -53,6 +54,9 @@ const BGILeads = ({ user }) => {
   const [paymentStatus, setPaymentStatus] = useState("All");
   const [assignedTo, setAssignedTo] = useState("All");
   const [todayOnly, setTodayOnly] = useState(false);
+  const [drillDate, setDrillDate] = useState(null);
+  const [drillStartDate, setDrillStartDate] = useState(null);
+  const [drillEndDate, setDrillEndDate] = useState(null);
   const invalidReason = "All";
   const [sortBy, setSortBy] = useState("created_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -89,11 +93,20 @@ const BGILeads = ({ user }) => {
     const statusQ = qp.get("status");
     const domainQ = qp.get("domain");
     const todayQ = qp.get("today");
+    const staffQ = qp.get("assignedTo");
+    const dateQ = qp.get("date");
+    const startQ = qp.get("startDate");
+    const endQ = qp.get("endDate");
 
     // Reset filters to defaults when query params are absent.
     setStatus(statusQ || "All");
     setDomain(domainQ || "All");
     setTodayOnly(todayQ === "1");
+    setAssignedTo(staffQ || "All");
+    setDrillDate(dateQ);
+    setDrillStartDate(startQ);
+    setDrillEndDate(endQ);
+
     if (resolvedView.apiView === "pending") setPaymentStatus("All");
   }, [location.search, resolvedView.apiView]);
 
@@ -114,7 +127,7 @@ const BGILeads = ({ user }) => {
 
           const tier = getTier(user);
           const isSuperAdmin = tier === 'SUPER_ADMIN';
-          const isAdminTier = tier === 'ADMIN' || isSuperAdmin;
+          const isAdminTier = tier === "ADMIN" || isSuperAdmin;
           const userDomainsList = (user?.domain || '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
 
           let filteredMaster = allDomains;
@@ -179,19 +192,23 @@ const BGILeads = ({ user }) => {
     try {
       const isWaitingView = resolvedView.forcedStatus === "Waiting for Confirmation";
       if (isWaitingView) {
-        const params = new URLSearchParams({
-          view: "all",
-          page: "1",
-          limit: "5000",
-          search: "",
-          domain,
-          status: "All",
-          payment_status: "All",
-          invalid_reason: invalidReason,
-          assigned_to: assignedTo,
-          sort_by: sortBy,
-          sort_order: sortOrder,
-        });
+        const params = new URLSearchParams();
+        params.set("view", "all");
+        params.set("page", "1");
+        params.set("limit", "5000");
+        params.set("search", "");
+        params.set("domain", domain);
+        params.set("status", "All");
+        params.set("payment_status", "All");
+        params.set("invalid_reason", invalidReason);
+        params.set("assigned_to", assignedTo);
+        params.set("sort_by", sortBy);
+        params.set("sort_order", sortOrder);
+
+        if (todayOnly) params.set("today", "1");
+        if (drillDate) params.set("date", drillDate);
+        if (drillStartDate) params.set("startDate", drillStartDate);
+        if (drillEndDate) params.set("endDate", drillEndDate);
 
         const allRes = await fetch(`${API_BASE_URL_PORTAL}/api/bgi/leads?${params.toString()}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -204,6 +221,7 @@ const BGILeads = ({ user }) => {
         const allJson = await allRes.json();
         let rows = allJson.leads || [];
 
+        // Filtering for Waiting Status is done on the client as it's a derived state
         rows = rows.filter((lead) => {
           const st = String(lead.status || "").trim().toLowerCase();
           const knownNonWaiting = ["new", "follow up", "enrolled", "closed"];
@@ -226,22 +244,6 @@ const BGILeads = ({ user }) => {
               leadCode.includes(q) ||
               id.includes(q) ||
               leadDomain.includes(q)
-            );
-          });
-        }
-
-        if (assignedTo && assignedTo !== "All") {
-          rows = rows.filter((lead) => String(lead.assigned_to) === String(assignedTo));
-        }
-
-        if (todayOnly) {
-          const now = new Date();
-          rows = rows.filter((lead) => {
-            const d = new Date(lead.created_at);
-            return (
-              d.getFullYear() === now.getFullYear() &&
-              d.getMonth() === now.getMonth() &&
-              d.getDate() === now.getDate()
             );
           });
         }
@@ -276,19 +278,24 @@ const BGILeads = ({ user }) => {
       }
 
       if (resolvedView.apiView === "pending") {
-        const params = new URLSearchParams({
-          view: "all",
-          page: "1",
-          limit: "5000",
-          search: "",
-          domain,
-          status: "All",
-          payment_status: "All",
-          invalid_reason: invalidReason,
-          assigned_to: assignedTo,
-          sort_by: sortBy,
-          sort_order: sortOrder,
-        });
+        const params = new URLSearchParams();
+        params.set("view", "all");
+        params.set("page", "1");
+        params.set("limit", "5000");
+        params.set("search", "");
+        params.set("domain", domain);
+        params.set("status", "All");
+        params.set("payment_status", "All");
+        params.set("invalid_reason", invalidReason);
+        params.set("assigned_to", assignedTo);
+        params.set("sort_by", sortBy);
+        params.set("sort_order", sortOrder);
+
+        if (todayOnly) params.set("today", "1");
+        if (drillDate) params.set("date", drillDate);
+        if (drillStartDate) params.set("startDate", drillStartDate);
+        if (drillEndDate) params.set("endDate", drillEndDate);
+
         const allRes = await fetch(`${API_BASE_URL_PORTAL}/api/bgi/leads?${params.toString()}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         });
@@ -321,23 +328,6 @@ const BGILeads = ({ user }) => {
               leadCode.includes(q) ||
               id.includes(q) ||
               leadDomain.includes(q)
-            );
-          });
-        }
-        if (assignedTo && assignedTo !== "All") {
-          rows = rows.filter((lead) => String(lead.assigned_to) === String(assignedTo));
-        }
-
-        // Keep pending page aligned with dashboard pending card:
-        // do not narrow by status/payment filters.
-        if (todayOnly) {
-          const now = new Date();
-          rows = rows.filter((lead) => {
-            const d = new Date(lead.created_at);
-            return (
-              d.getFullYear() === now.getFullYear() &&
-              d.getMonth() === now.getMonth() &&
-              d.getDate() === now.getDate()
             );
           });
         }
@@ -375,20 +365,24 @@ const BGILeads = ({ user }) => {
         resolvedView.apiView === "payment" && paymentStatus === "Unpaid" ? "All" : paymentStatus;
       const effectiveStatus = resolvedView.forcedStatus || status;
 
-      const params = new URLSearchParams({
-        view: resolvedView.apiView,
-        page: String(page),
-        limit: String(limit),
-        search,
-        domain,
-        status: effectiveStatus,
-        payment_status: effectivePaymentStatus,
-        invalid_reason: invalidReason,
-        assigned_to: assignedTo,
-        source: resolvedView.source || "All",
-        sort_by: sortBy,
-        sort_order: sortOrder,
-      });
+      const params = new URLSearchParams();
+      params.set("view", resolvedView.apiView);
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      params.set("search", search || "");
+      params.set("domain", domain || "All");
+      params.set("status", effectiveStatus || "All");
+      params.set("payment_status", effectivePaymentStatus || "All");
+      params.set("invalid_reason", invalidReason || "All");
+      params.set("assigned_to", assignedTo || "All");
+      params.set("source", resolvedView.source || "All");
+      params.set("sort_by", sortBy);
+      params.set("sort_order", sortOrder);
+
+      if (todayOnly) params.set("today", "1");
+      if (drillDate) params.set("date", drillDate);
+      if (drillStartDate) params.set("startDate", drillStartDate);
+      if (drillEndDate) params.set("endDate", drillEndDate);
 
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/bgi/leads?${params.toString()}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -398,48 +392,9 @@ const BGILeads = ({ user }) => {
         return;
       }
       const json = await res.json();
-      const incomingLeads = json.leads || [];
-      const filteredLeads = incomingLeads.filter((lead) => {
-        const st = String(lead.status || "").trim().toLowerCase();
-        const ps = String(lead.payment_status || "").trim().toLowerCase();
-        if (resolvedView.apiView === "payment") {
-          return ps === "paid" || ps === "partially paid";
-        }
-        if (resolvedView.apiView === "invalid") {
-          return st === "closed";
-        }
-        if (resolvedView.forcedStatus) {
-          const wanted = String(resolvedView.forcedStatus).trim().toLowerCase();
-          if (wanted === "waiting for confirmation") {
-            return st.includes("waiting");
-          }
-          if (wanted.includes(',')) {
-            return wanted.split(',').map(s => s.trim()).includes(st);
-          }
-          return st === wanted;
-        }
-        return true;
-      });
-
-      const todayFilteredLeads = todayOnly
-        ? filteredLeads.filter((lead) => {
-          const d = new Date(lead.created_at);
-          const now = new Date();
-          return (
-            d.getFullYear() === now.getFullYear() &&
-            d.getMonth() === now.getMonth() &&
-            d.getDate() === now.getDate()
-          );
-        })
-        : filteredLeads;
-
       setData({
-        leads: todayFilteredLeads,
-        total: todayOnly
-          ? todayFilteredLeads.length
-          : resolvedView.apiView === "payment"
-            ? filteredLeads.length
-            : json.total || 0,
+        leads: json.leads || [],
+        total: json.total || 0,
         page: json.page || page,
         totalPages: json.totalPages || 1,
       });
@@ -457,6 +412,15 @@ const BGILeads = ({ user }) => {
 
     const tid = toast.loading("Updating status...");
     try {
+      if (newStatus === "Enrolled") {
+        const lead = data.leads.find(l => l.id === leadId);
+        const ps = (lead?.payment_status || "").toLowerCase();
+        if (ps === "unpaid" || ps === "") {
+          toast.error("Update payment status", { id: tid });
+          return;
+        }
+      }
+
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/status`, {
         method: "PUT",
         headers: {
@@ -638,6 +602,20 @@ const BGILeads = ({ user }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.page, pageSize, resolvedView.apiView]);
 
+  useEffect(() => {
+    const flid = location.state?.focusLeadId;
+    if (!flid || hasFocusedLeadRef.current || data.leads.length === 0) return;
+
+    const match = data.leads.find((l) => Number(l.id) === Number(flid));
+    if (match) {
+      hasFocusedLeadRef.current = true;
+      setTimeout(() => {
+        const el = document.getElementById(`lead-row-${flid}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 300);
+    }
+  }, [data.leads, location.state?.focusLeadId]);
+
   const visibleLeadIds = useMemo(() => data.leads.map((lead) => lead.id), [data.leads]);
   const selectedLeadSet = useMemo(() => new Set(selectedLeadIds), [selectedLeadIds]);
   const allVisibleSelected =
@@ -758,13 +736,6 @@ const BGILeads = ({ user }) => {
             <option key={d} value={d}>{d}</option>
           ))}
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="border border-slate-200 rounded-lg text-sm px-3 py-2">
-          <option value="All">All Status</option>
-          <option value="New">New</option>
-          <option value="Follow Up">Follow Up</option>
-          <option value="Enrolled">Enrolled</option>
-          <option value="Closed">Closed</option>
-        </select>
 
         <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="border border-slate-200 rounded-lg text-sm px-3 py-2">
           <option value="All">{resolvedView.apiView === "payment" ? "All (Paid + Partial)" : "All Payment"}</option>
@@ -779,7 +750,7 @@ const BGILeads = ({ user }) => {
           className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white"
         >
           <option value="All">All Assigned To</option>
-          <option value={user.id}>{user.name} (Self)</option>
+          <option value={user?.id}>{user?.name} (Self)</option>
           {staffList.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
@@ -892,11 +863,11 @@ const BGILeads = ({ user }) => {
           </div>
         </div>
 
-        <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+        <div className={`${data.leads.length > 10 ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                <th className="p-3 border-r border-slate-100">
+                <th className="p-2.5 border-r border-slate-100">
                   <input
                     type="checkbox"
                     checked={allVisibleSelected}
@@ -904,21 +875,22 @@ const BGILeads = ({ user }) => {
                     aria-label="Select all leads"
                   />
                 </th>
-                <SortHeader label="Candidate" sortKey="student_name" className="border-r border-slate-100" />
-                <th className="p-3 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Phone</th>
-                <SortHeader label="Domain" sortKey="domain" className="border-r border-slate-100" />
-                <th className="p-3 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Category</th>
-                <th className="p-3 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Interest</th>
-                <th className="p-3 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">{isStaffTier ? 'Assigned By' : 'Assigned To'}</th>
-                <SortHeader label="Date" sortKey="created_at" className="border-r border-slate-100" />
-                <SortHeader label="Status" sortKey="status" className="border-r border-slate-100" />
-                <th className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-wider">Actions</th>
+                <SortHeader label="Candidate" sortKey="student_name" className="border-r border-slate-100 !p-2.5 text-[10px]" />
+                <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Phone</th>
+                <SortHeader label="Domain" sortKey="domain" className="border-r border-slate-100 !p-2.5 text-[10px]" />
+                <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Category</th>
+                <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Interest</th>
+                <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Remarks</th>
+                <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">{isStaffTier ? 'Assigned By' : 'Assigned To'}</th>
+                <SortHeader label="Date" sortKey="created_at" className="border-r border-slate-100 !p-2.5 text-[10px]" />
+                <SortHeader label="Status" sortKey="status" className="border-r border-slate-100 !p-2.5 text-[10px]" />
+                <th className="p-2.5 text-center text-[10px] font-black text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.leads.length > 0 ? data.leads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-slate-50">
-                  <td className="p-3 border-r border-slate-50">
+                  <td className="p-2.5 border-r border-slate-50">
                     <input
                       type="checkbox"
                       checked={selectedLeadSet.has(lead.id)}
@@ -926,25 +898,32 @@ const BGILeads = ({ user }) => {
                       aria-label={`Select lead ${lead.student_name}`}
                     />
                   </td>
-                  <td className="p-3 border-r border-slate-50">
-                    <p className="font-bold text-slate-800">{lead.student_name}</p>
-                    <p className="text-[10px] text-slate-400">{lead.lead_code || `#${lead.id}`} - {lead.domain}</p>
+                  <td className="p-2.5 border-r border-slate-50">
+                    <p className="font-bold text-slate-800 text-[12px] whitespace-normal break-words leading-tight">{lead.student_name}</p>
+                    <p className="text-[10px] text-slate-400 whitespace-normal break-words mt-0.5">{lead.lead_code || `#${lead.id}`} - {lead.domain}</p>
                   </td>
-                  <td className="p-3 text-xs font-medium text-slate-600 border-r border-slate-50">{lead.phone}</td>
-                  <td className="p-3 text-xs font-medium text-slate-600 border-r border-slate-50">{lead.domain}</td>
-                  <td className="p-3 text-xs font-bold text-slate-700 border-r border-slate-50">{lead.category || "-"}</td>
-                  <td className="p-3 text-xs font-bold text-blue-700 border-r border-slate-50">{lead.interested_in || "-"}</td>
-                  <td className="p-3 border-r border-slate-50">
+                  <td className="p-2.5 text-[11px] font-medium text-slate-600 border-r border-slate-50 whitespace-normal">{lead.phone}</td>
+                  <td className="p-2.5 text-[11px] font-medium text-slate-600 border-r border-slate-50 whitespace-normal break-words leading-tight">{lead.domain}</td>
+                  <td className="p-2.5 text-[11px] font-bold text-slate-700 border-r border-slate-50 whitespace-normal break-words leading-tight">{lead.category || "-"}</td>
+                  <td className="p-2.5 text-[11px] font-bold text-blue-700 border-r border-slate-50 whitespace-normal break-words leading-tight">{lead.interested_in || "-"}</td>
+                  <td 
+                    className="p-2.5 border-r border-slate-50 min-w-[150px] cursor-pointer"
+                  >
+                    <p className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight line-clamp-2 hover:text-blue-600 transition-colors" title={lead.remarks}>
+                      {lead.remarks || "-"}
+                    </p>
+                  </td>
+                  <td className="p-2.5 border-r border-slate-50">
                     {isStaffTier ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <div className={`w-1.5 h-1.5 rounded-full ${lead.assigned_by === user.id ? 'bg-emerald-400' : 'bg-blue-400'}`}></div>
-                        <span className="text-xs font-bold text-slate-700">
+                        <span className="text-[11px] font-bold text-slate-700 leading-tight">
                           {lead.assigned_by === user.id ? 'Self' : (lead.assigned_by_name || "System")}
                         </span>
                       </div>
                     ) : (
                       <select
-                        className="text-[11px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-500/20"
+                        className="text-[11px] font-bold bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-2 ring-blue-500/20 w-fit"
                         value={lead.assigned_to || ""}
                         onChange={(e) => {
                           const selectedStaff = e.target.value === user.id.toString()
@@ -961,54 +940,54 @@ const BGILeads = ({ user }) => {
                       </select>
                     )}
                   </td>
-                  <td className="p-3 text-[11px] font-bold text-slate-500 border-r border-slate-50">
+                  <td className="p-2.5 text-[11px] font-bold text-slate-500 border-r border-slate-50 leading-tight">
                     {lead.created_at ? new Date(lead.created_at).toLocaleDateString("en-GB") : "-"}
                   </td>
-                  <td className="p-3 text-xs border-r border-slate-50">
-                    <div className="flex flex-col gap-1">
+                  <td className="p-2.5 text-xs border-r border-slate-50">
+                    <div className="flex flex-col gap-1.5">
                       <select
                         value={lead.status || "New"}
                         onChange={(e) => updateStatus(lead.id, e.target.value, lead.student_name)}
-                        className={`text-[10px] font-black uppercase px-2 py-1 rounded border border-transparent outline-none cursor-pointer ${getStatusStyle(lead.status)}`}
+                        className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border border-transparent outline-none cursor-pointer w-fit ${getStatusStyle(lead.status)}`}
                       >
                         <option value="New">New</option>
-                        <option value="Follow Up">Follow Up</option>
+                        <option value="Follow Up">Confirmed Leads</option>
                         <option value="Waiting for Confirmation">Waiting for Confirmation</option>
                         <option value="Enrolled">Enrolled</option>
                         <option value="Closed">Closed</option>
                       </select>
-                      <p className="text-[10px] text-slate-500">{lead.email || "-"}</p>
+                      <p className="text-[10px] text-slate-500 whitespace-normal break-all leading-tight">{lead.email || "-"}</p>
                     </div>
                   </td>
-                  <td className="p-3 text-center">
-                    <div className="flex items-center justify-center gap-2">
+                  <td className="p-2.5 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
                       <button
                         onClick={() => goToLeadDetails(lead)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors border border-blue-100"
+                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors border border-blue-100"
                         title="View Details"
                       >
-                        <Eye size={16} />
+                        <Eye size={15} />
                       </button>
                       <button
                         onClick={() => fetchLeadHistory(lead.id, lead.student_name)}
-                        className="p-1.5 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-100 rounded transition-colors border border-indigo-100"
                         title="View History"
                       >
-                        <History size={16} />
+                        <History size={15} />
                       </button>
                       <button
                         onClick={() => handleEditLead(lead)}
-                        className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-100"
+                        className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded transition-colors border border-emerald-100"
                         title="Edit Lead"
                       >
-                        <Edit size={16} />
+                        <Edit size={15} />
                       </button>
                       <button
                         onClick={() => deleteLead(lead.id)}
-                        className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors border border-red-100"
+                        className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors border border-red-100"
                         title="Delete Lead"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </td>
@@ -1156,7 +1135,7 @@ const getStatusStyle = (status) => {
     case "New":
       return "bg-blue-100 text-blue-700";
     case "Follow Up":
-      return "bg-orange-100 text-orange-700";
+      return "bg-orange-100 text-orange-700 font-bold";
     case "Waiting for Confirmation":
       return "bg-amber-100 text-amber-700";
     case "Enrolled":

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { RefreshCcw } from "lucide-react";
+import { RefreshCcw, ChevronUp, ChevronDown, MessageSquare, User, PenTool, CreditCard } from "lucide-react";
 import LoadingScreen from "../Layout/LoadingScreen";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import { confirmToast } from "../../../utils/toastConfirm";
@@ -33,6 +33,11 @@ const LeadDetails = ({ user }) => {
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [historyData, setHistoryData] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  
+  // Visibility States
+  // Visibility States (Accordion Layout)
+  const [expandedSection, setExpandedSection] = useState('message'); // 'message', 'profile', 'remarks', 'payments' or null
+
 
   const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
   const recipientPrefKey = `remark_default_recipients_${user?.id || "guest"}`;
@@ -397,345 +402,142 @@ const LeadDetails = ({ user }) => {
     ? remarkMessages
     : remarkMessages.slice(0, 3);
 
+  const SectionHeader = ({ title, id, currentExpanded, setExpanded, icon: Icon, color = "text-slate-400" }) => {
+    const isExpanded = currentExpanded === id;
+    return (
+        <div 
+            className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between group cursor-pointer hover:border-slate-300 transition-all shadow-sm"
+            onClick={() => setExpanded(isExpanded ? null : id)}
+        >
+            <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg bg-slate-50 ${color}`}>
+                    <Icon size={18} />
+                </div>
+                <div>
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">{title}</h3>
+                </div>
+            </div>
+            <div className={`transition-all duration-300 ${isExpanded ? "text-slate-600 rotate-180" : "text-red-500"}`}>
+                <ChevronDown size={25} />
+            </div>
+        </div>
+    );
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
+    <div className="space-y-4 pb-20">
+      {/* 1. Header (Static) */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between shadow-sm">
         <div>
-          <h2 className="text-xl font-black text-slate-800">Lead Details</h2>
-          <p className="text-xs font-bold text-slate-400">{lead.lead_code || `#${lead.id}`} {lead.student_name}</p>
+          <h2 className="text-xl font-black text-slate-800 tracking-tight tracking-tight">Lead Details</h2>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{lead.lead_code || `#${lead.id}`} • {lead.student_name}</p>
         </div>
         <button
           onClick={() => navigate(`/portal/domain/${slug}`)}
-          className="px-3 py-2 text-xs font-black rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300"
+          className="px-4 py-2 text-xs font-black rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors border border-slate-200"
         >
           Back To Domain
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <InfoRow label="Email" value={lead.email || "N/A"} />
-        <InfoRow label="Phone" value={lead.phone || "N/A"} />
-        <InfoRow label="Domain" value={lead.domain || "N/A"} />
-        <InfoRow label="Course / Interested In" value={lead.interested_in || "General"} />
-        <InfoRow label="Source" value={lead.source || "Direct"} />
-        <InfoRow label="Status" value={lead.status || "New"} />
-        <InfoRow label="Assigned To" value={lead.assigned_to_name || "Not assigned"} />
-        <InfoRow label="Assigned By" value={lead.assigned_by_name || "System"} />
-        <InfoRow label="Created On" value={lead.created_at ? new Date(lead.created_at).toLocaleString() : "N/A"} />
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-        <p className="text-[10px] font-black uppercase text-slate-400">Remarks</p>
-        <textarea
-          value={remarksDraft}
-          onChange={(e) => setRemarksDraft(e.target.value)}
-          className="w-full min-h-[100px] p-3 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 ring-blue-500/20"
+      {/* 2. Message Log (NOW AT THE TOP) */}
+      <div className="space-y-3">
+        <SectionHeader 
+            title="Message Log & Activity" 
+            id="message"
+            currentExpanded={expandedSection}
+            setExpanded={setExpandedSection}
+            icon={MessageSquare}
+            color="text-blue-600"
         />
-
-        <button
-          onClick={saveRemarks}
-          className="px-3 py-2 text-[10px] font-black rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-        >
-          Save Remark
-        </button>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-        <p className="text-[10px] font-black uppercase text-slate-400">Payment Details</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <select
-            disabled={!canEditPayments}
-            value={paymentDraft.payment_status}
-            onChange={(e) => setPaymentDraft((prev) => ({ ...prev, payment_status: e.target.value }))}
-            className={`border rounded-lg px-3 py-2 text-sm ${canEditPayments ? "bg-white" : "bg-slate-100 text-slate-500 cursor-not-allowed"}`}
-          >
-            <option value="Paid">Paid</option>
-            <option value="Unpaid">Unpaid</option>
-            <option value="Partially Paid">Partially Paid</option>
-          </select>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            disabled={!canEditPayments}
-            value={paymentDraft.total_fees}
-            onChange={(e) => setPaymentDraft((prev) => ({ ...prev, total_fees: e.target.value }))}
-            className={`border rounded-lg px-3 py-2 text-sm ${canEditPayments ? "bg-white" : "bg-slate-100 text-slate-500 cursor-not-allowed"}`}
-            placeholder="Total Fees"
-          />
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            disabled={!canEditPayments}
-            value={paymentDraft.paid_amount}
-            onChange={(e) => setPaymentDraft((prev) => ({ ...prev, paid_amount: e.target.value }))}
-            className={`border rounded-lg px-3 py-2 text-sm ${canEditPayments ? "bg-white" : "bg-slate-100 text-slate-500 cursor-not-allowed"}`}
-            placeholder="Paid Amount"
-          />
-        </div>
-        {canEditPayments && (
-          <button
-            onClick={savePayment}
-            className="px-3 py-2 text-[10px] font-black rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
-          >
-            Save Payment Details
-          </button>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] font-black uppercase text-slate-400">Message Log</p>
-          <button
-            onClick={() => {
-              fetchRemarkMessages();
-              fetchDomainStaff();
-            }}
-            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-            title="Refresh Table"
-          >
-            <RefreshCcw size={14} />
-          </button>
-        </div>
-
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50">
-              <tr className="text-[10px] uppercase text-slate-500 font-black">
-                <th className="p-3">Ref ID</th>
-                <th className="p-3">Subject</th>
-                <th className="p-3">Description</th>
-                <th className="p-3">Attachment</th>
-                <th className="p-3">Created</th>
-                <th className="p-3">Last Modified</th>
-                <th className="p-3">Mail</th>
-                <th className="p-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {remarkMessages.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-4 text-center text-slate-400">No messages yet</td>
-                </tr>
-              ) : (
-                visibleMessages.map((m) => (
-                  <tr key={m.id} className="border-t border-slate-100 align-top">
-                    <td className="p-3 font-bold text-slate-700">{lead.lead_code || m.ref_id || lead.id}</td>
-                    <td className="p-3 font-semibold text-slate-700">{m.subject}</td>
-                    <td className="p-3 text-slate-600 whitespace-pre-wrap">{m.description}</td>
-                    <td className="p-3">
-                      {m.attachment_base64 ? (
-
-                        m.attachment_type?.startsWith("image") ? (
-
-                          <img
-                            src={m.attachment_base64}
-                            alt={m.attachment_name}
-                            className="w-16 h-16 object-cover rounded border cursor-pointer"
-                            onClick={() => window.open(m.attachment_base64, "_blank")}
-                          />
-
-                        ) : m.attachment_type === "application/pdf" ? (
-
-                          <a
-                            href={m.attachment_base64}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-red-600 font-bold text-xs"
-                          >
-                            📄 View PDF
-                          </a>
-
-                        ) : (
-
-                          <a
-                            href={m.attachment_base64}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 underline text-xs"
-                          >
-                            Download
-                          </a>
-
-                        )
-
-                      ) : "-"}
-                    </td>
-                    <td className="p-3 text-slate-500">
-                      {new Date(m.created_at).toLocaleString()}
-                    </td>
-
-                    <td className="p-3 text-slate-500">
-                      {m.updated_at ? new Date(m.updated_at).toLocaleString() : "-"}
-                    </td>                    <td className="p-3">
-                      <span className={`px-2 py-1 rounded text-[10px] font-black ${m.sent_status === "SENT" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {m.sent_status}
-                      </span>
-                    </td>
-                    <td className="p-3 whitespace-nowrap">
-                      <button
-                        onClick={() => startEditMessage(m)}
-                        className="mr-2 px-2 py-1 text-[10px] font-black rounded bg-amber-100 text-amber-700 hover:bg-amber-200"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => deleteMessage(m.id)}
-                        className="px-2 py-1 text-[10px] font-black rounded bg-red-100 text-red-700 hover:bg-red-200"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        onClick={() => openHistory(m.id)}
-                        className="mr-2 px-2 py-1 text-[10px] ml-2 font-black rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
-                      >
-                        History
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-
-        </div>
-        {remarkMessages.length > 3 && (
-          <div className="flex justify-end mt-3">
-            <button
-              onClick={() => setShowAllMessages(!showAllMessages)}
-              className="px-4 py-1 text-[10px] font-black rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"
-            >
-              {showAllMessages ? "Show Less" : `Show All (${remarkMessages.length})`}
-            </button>
-          </div>
-        )}
-
-        {!!lead.remarks?.trim() && (
-          <button
-            onClick={() => setShowAddMessage((prev) => !prev)}
-            className="px-3 py-2 text-[10px] font-black rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
-          >
-            {showAddMessage ? "Close Add & Send Message" : "Add & Send Message"}
-          </button>
-        )}
-
-        {showAddMessage && (
-          <div className="space-y-3 border border-slate-200 rounded-lg p-4 bg-slate-50">
-            <p className="text-[10px] font-black uppercase text-slate-500">
-              {editingMessageId ? "Edit Message (will re-send mail)" : "Add Message"}
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <input
-                value={messageDraft.ref_id}
-                disabled
-                className="border rounded-lg px-3 py-2 text-sm bg-slate-100 text-slate-500"
-                placeholder="Ref ID *"
-              />
-              <input
-                value={messageDraft.subject}
-                onChange={(e) => setMessageDraft((prev) => ({ ...prev, subject: e.target.value }))}
-                className="border rounded-lg px-3 py-2 text-sm"
-                placeholder="Subject *"
-              />
-              <input
-                value={lead.email || ""}
-                disabled
-                className="border rounded-lg px-3 py-2 text-sm bg-slate-100 text-slate-500"
-                placeholder="Candidate Email *"
-              />
-            </div>
-            <textarea
-              value={messageDraft.description}
-              onChange={(e) => setMessageDraft((prev) => ({ ...prev, description: e.target.value }))}
-              className="w-full min-h-[110px] border rounded-lg p-3 text-sm"
-              placeholder="Description / message *"
-            />
-
-            <div>
-              <p className="text-[10px] font-black uppercase text-slate-400 mb-1">
-                Attachment (Optional)
-              </p>
-
-              <input
-                type="file"
-                accept="image/*,.pdf"
-                onChange={(e) => {
-                  const file = e.target.files[0];
-                  if (!file) return;
-
-                  const reader = new FileReader();
-
-                  reader.onload = () => {
-                    setMessageDraft((prev) => ({
-                      ...prev,
-                      attachment: reader.result, // base64
-                      attachmentName: file.name,
-                      attachmentType: file.type
-                    }));
-                  };
-
-                  reader.readAsDataURL(file);
+        {expandedSection === 'message' && (
+          <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-black uppercase text-slate-400">Communication History</p>
+              <button
+                onClick={() => {
+                  fetchRemarkMessages();
+                  fetchDomainStaff();
                 }}
-                className="text-xs border border-slate-200 rounded-lg p-2 w-full"
-              />
-
-              {messageDraft.attachment && (
-                <p className="text-[10px] text-green-600 mt-1 font-semibold">
-                  Selected: {messageDraft.attachmentName}
-                </p>
-              )}
+                className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                title="Refresh Table"
+              >
+                <RefreshCcw size={14} />
+              </button>
             </div>
 
-            <div className="border border-slate-200 rounded-lg overflow-x-auto bg-white">
-              <table className="w-full text-xs">
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50">
                   <tr className="text-[10px] uppercase text-slate-500 font-black">
-                    <th className="p-2">Send Mail</th>
-                    <th className="p-2">Employee ID</th>
-                    <th className="p-2">Name</th>
-                    <th className="p-2">Role</th>
-                    <th className="p-2">Email</th>
-                    <th className="p-2">Mobile</th>
-                    <th className="p-2">Domain</th>
+                    <th className="p-3">Ref ID</th>
+                    <th className="p-3">Subject</th>
+                    <th className="p-3">Description</th>
+                    <th className="p-3">Attachment</th>
+                    <th className="p-3">Created</th>
+                    <th className="p-3">Mail</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {domainStaff.length === 0 ? (
+                  {remarkMessages.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-3 text-center text-slate-400">No domain staff found</td>
+                      <td colSpan={7} className="p-8 text-center text-slate-400 font-bold uppercase tracking-widest">No messages logged yet</td>
                     </tr>
                   ) : (
-                    domainStaff.map((s) => (
-                      <tr key={s.id} className="border-t border-slate-100">
-                        <td className="p-2 text-center">
+                    visibleMessages.map((m) => (
+                      <tr key={m.id} className="border-t border-slate-100 align-top hover:bg-slate-50/50 transition-colors">
+                        <td className="p-3 font-bold text-slate-700">{lead.lead_code || m.ref_id || lead.id}</td>
+                        <td className="p-3 font-semibold text-slate-700 whitespace-normal break-words">{m.subject}</td>
+                        <td className="p-3 text-slate-600 whitespace-pre-wrap leading-relaxed">{m.description}</td>
+                        <td className="p-3">
+                          {m.attachment_base64 ? (
+                            m.attachment_type?.startsWith("image") ? (
+                              <img
+                                src={m.attachment_base64}
+                                alt={m.attachment_name}
+                                className="w-16 h-16 object-cover rounded-lg border border-slate-200 cursor-pointer hover:scale-105 transition-transform"
+                                onClick={() => window.open(m.attachment_base64, "_blank")}
+                              />
+                            ) : m.attachment_type === "application/pdf" ? (
+                              <a href={m.attachment_base64} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-red-600 font-black text-[10px] bg-red-50 px-2 py-1 rounded">
+                                📄 VIEW PDF
+                              </a>
+                            ) : (
+                              <a href={m.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-[10px] font-black">
+                                DOWNLOAD
+                              </a>
+                            )
+                          ) : <span className="text-slate-300 font-bold">-</span>}
+                        </td>
+                        <td className="p-3 text-slate-500 font-medium">
+                          {new Date(m.created_at).toLocaleString()}
+                        </td>
+                        <td className="p-3">
+                          <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-tighter ${m.sent_status === "SENT" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                            {m.sent_status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right space-x-1 whitespace-nowrap">
                           <button
-                            type="button"
-                            onClick={() => toggleRecipient(s.id)}
-                            className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors ${messageDraft.recipientUserIds.includes(Number(s.id))
-                                ? "bg-emerald-500"
-                                : "bg-slate-300"
-                              }`}
-                            aria-label={`Toggle mail send for ${s.name || "user"}`}
-                            title={messageDraft.recipientUserIds.includes(Number(s.id)) ? "ON" : "OFF"}
+                            onClick={() => startEditMessage(m)}
+                            className="px-2 py-1 text-[9px] font-black rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors uppercase"
                           >
-                            <span
-                              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${messageDraft.recipientUserIds.includes(Number(s.id))
-                                  ? "translate-x-6"
-                                  : "translate-x-1"
-                                }`}
-                            />
-                            <span className="sr-only">
-                              {messageDraft.recipientUserIds.includes(Number(s.id)) ? "ON" : "OFF"}
-                            </span>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteMessage(m.id)}
+                            className="px-2 py-1 text-[9px] font-black rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 transition-colors uppercase"
+                          >
+                            Del
+                          </button>
+                          <button
+                            onClick={() => openHistory(m.id)}
+                            className="px-2 py-1 text-[9px] font-black rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors uppercase"
+                          >
+                            History
                           </button>
                         </td>
-                        <td className="p-2">{s.employee_id || "-"}</td>
-                        <td className="p-2 font-semibold">{s.name}</td>
-                        <td className="p-2">{s.role}</td>
-                        <td className="p-2">{s.email || "-"}</td>
-                        <td className="p-2">{s.phone || "-"}</td>
-                        <td className="p-2">{s.domain || "-"}</td>
                       </tr>
                     ))
                   )}
@@ -743,112 +545,337 @@ const LeadDetails = ({ user }) => {
               </table>
             </div>
 
-            <div className="flex gap-2">
+            {remarkMessages.length > 3 && (
+              <div className="flex justify-center border-t border-slate-100 pt-3">
+                <button
+                  onClick={() => setShowAllMessages(!showAllMessages)}
+                  className="px-6 py-1.5 text-[10px] font-black rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all uppercase tracking-widest"
+                >
+                  {showAllMessages ? "Show Less" : `View All Activity (${remarkMessages.length})`}
+                </button>
+              </div>
+            )}
+
+            {!!lead.remarks?.trim() && (
               <button
-                onClick={() => saveAndSendMessage(true)}
-                disabled={isSendingMessage}
-                className={`px-4 py-2 text-[10px] font-black rounded-lg text-white
-                  ${isSendingMessage ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}
+                onClick={() => setShowAddMessage((prev) => !prev)}
+                className={`w-full py-2.5 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest
+                  ${showAddMessage ? "bg-slate-800 text-white shadow-inner" : "bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700"}
                 `}
               >
-                {isSendingMessage ? "Sending..." : editingMessageId ? "Update And Re-Send" : "Save And Send"}
+                {showAddMessage ? "× Close Message Composer" : "+ Compose & Send Message"}
               </button>
-              {editingMessageId && (
-                <button
-                  onClick={() => saveAndSendMessage(false)}
-                  disabled={isSendingMessage}
-                  className={`px-4 py-2 text-[10px] font-black rounded-lg text-white
-                    ${isSendingMessage ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"}
-                  `}
-                >
-                  {isSendingMessage ? "Saving..." : "Save Changes (No Resend)"}
-                </button>
-              )}
-            </div>
-            {isSendingMessage && (
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                Processing message...
-              </p>
+            )}
+
+            {showAddMessage && (
+              <div className="space-y-4 border border-slate-200 rounded-xl p-5 bg-slate-50 animate-in zoom-in-95 duration-300">
+                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                  {editingMessageId ? "Edit Message Console" : "New Message Console"}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Ref ID</label>
+                    <input value={messageDraft.ref_id} disabled className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-100 text-slate-500 font-bold" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Subject</label>
+                    <input
+                      value={messageDraft.subject}
+                      onChange={(e) => setMessageDraft((prev) => ({ ...prev, subject: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-2 ring-blue-500/20 outline-none transition-all"
+                      placeholder="Enter subject..."
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Recipient</label>
+                    <input value={lead.email || ""} disabled className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-100 text-slate-500 font-medium" />
+                  </div>
+                </div>
+                
+                <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Description</label>
+                    <textarea
+                        value={messageDraft.description}
+                        onChange={(e) => setMessageDraft((prev) => ({ ...prev, description: e.target.value }))}
+                        className="w-full min-h-[120px] border border-slate-200 rounded-xl p-3 text-xs focus:ring-2 ring-blue-500/20 outline-none transition-all"
+                        placeholder="Write your message detail here..."
+                    />
+                </div>
+
+                <div className="bg-white p-3 rounded-xl border border-slate-200">
+                    <p className="text-[9px] font-black uppercase text-slate-400 mb-2 ml-1">File Attachment</p>
+                    <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            setMessageDraft((prev) => ({
+                            ...prev,
+                            attachment: reader.result,
+                            attachmentName: file.name,
+                            attachmentType: file.type
+                            }));
+                        };
+                        reader.readAsDataURL(file);
+                        }}
+                        className="text-[10px] w-full"
+                    />
+                    {messageDraft.attachment && (
+                        <p className="text-[9px] text-emerald-600 mt-2 font-black uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded inline-block">
+                        ✓ ATTACHED: {messageDraft.attachmentName}
+                        </p>
+                    )}
+                </div>
+
+                <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm">
+                    <p className="bg-slate-50 p-2 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200">Internal Recipients (Staff CC)</p>
+                    <table className="w-full text-[10px]">
+                        <tbody>
+                        {domainStaff.length === 0 ? (
+                            <tr><td className="p-4 text-center text-slate-400 uppercase font-bold">No domain staff linked</td></tr>
+                        ) : (
+                            domainStaff.map((s) => (
+                            <tr key={s.id} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                <td className="p-2 text-center w-12">
+                                <button
+                                    type="button"
+                                    onClick={() => toggleRecipient(s.id)}
+                                    className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${messageDraft.recipientUserIds.includes(Number(s.id)) ? "bg-emerald-500" : "bg-slate-200"}`}
+                                >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${messageDraft.recipientUserIds.includes(Number(s.id)) ? "translate-x-5" : "translate-x-1"}`} />
+                                </button>
+                                </td>
+                                <td className="p-2 font-bold text-slate-700">{s.name}</td>
+                                <td className="p-2 text-slate-500">{s.role}</td>
+                                <td className="p-2 text-slate-400 italic font-medium">{s.email || "-"}</td>
+                                <td className="p-2 text-slate-500">{s.domain || "-"}</td>
+                            </tr>
+                            ))
+                        )}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => saveAndSendMessage(true)}
+                    disabled={isSendingMessage}
+                    className={`flex-1 py-3 text-[10px] font-black rounded-xl text-white transition-all shadow-lg
+                      ${isSendingMessage ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-700 shadow-blue-100 hover:-translate-y-0.5"}
+                    `}
+                  >
+                    {isSendingMessage ? "PROCESSING..." : editingMessageId ? "UPDATE & RE-SEND MAIL" : "SAVE & SEND MAIL"}
+                  </button>
+                  {editingMessageId && (
+                    <button
+                      onClick={() => saveAndSendMessage(false)}
+                      disabled={isSendingMessage}
+                      className="flex-1 py-3 text-[10px] font-black rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-50 hover:-translate-y-0.5 transition-all"
+                    >
+                      SAVE CHANGES (LOCAL)
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}
       </div>
 
-      {showHistory && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-[700px] max-h-[80vh] overflow-auto p-5">
+      {/* 3. Profile Details (Candidate Info) */}
+      <div className="space-y-3">
+        <SectionHeader 
+          title="Candidate Profile Details" 
+          id="profile"
+          currentExpanded={expandedSection}
+          setExpanded={setExpandedSection}
+          icon={User} 
+          color="text-emerald-600"
+        />
+        {expandedSection === 'profile' && (
+          <div className="bg-white rounded-xl border border-slate-200 p-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
+            <InfoRow label="Candidate Name" value={lead.student_name || "N/A"} />
+            <InfoRow label="Contact Number" value={lead.phone || "N/A"} />
+            <InfoRow label="Email Address" value={lead.email || "N/A"} />
+            <InfoRow label="Assigned Domain" value={lead.domain || "N/A"} />
+            <InfoRow label="Interested In" value={lead.interested_in || "General Enquiry"} />
+            <InfoRow label="Lead Source" value={lead.source || "Direct / Organic"} />
+            <InfoRow label="Current Status" value={lead.status || "New"} />
+            <div className="col-span-2 h-[1px] bg-slate-100 my-2"></div>
+            <InfoRow label="Assigned Staff" value={lead.assigned_to_name || "Unassigned"} color="text-blue-600" />
+            <InfoRow label="Managed By Staff" value={lead.assigned_by_name || "System Admin"} />
+            <InfoRow label="Created At" value={lead.created_at ? new Date(lead.created_at).toLocaleString() : "N/A"} />
+            <InfoRow label="Latest Activity" value={lead.updated_at ? new Date(lead.updated_at).toLocaleString() : "Sync required"} />
+          </div>
+        )}
+      </div>
 
-            <div className="flex justify-between mb-4">
-              <h3 className="font-bold text-lg">Message History</h3>
+      {/* 4. Remarks (Quick Notes) */}
+      <div className="space-y-3">
+        <SectionHeader 
+          title="Quick Remarks & Internal Notes" 
+          id="remarks"
+          currentExpanded={expandedSection}
+          setExpanded={setExpandedSection}
+          icon={PenTool} 
+          color="text-amber-600"
+        />
+        {expandedSection === 'remarks' && (
+          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
+            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Global System Remarks</p>
+            <textarea
+              value={remarksDraft}
+              onChange={(e) => setRemarksDraft(e.target.value)}
+              className="w-full min-h-[120px] p-4 text-sm border border-slate-200 rounded-xl outline-none focus:ring-4 ring-amber-500/10 transition-all font-medium leading-relaxed bg-slate-50/30"
+              placeholder="Add system-wide remarks here..."
+            />
+            <button
+              onClick={saveRemarks}
+              className="px-6 py-2 text-[10px] font-black rounded-lg bg-slate-800 text-white hover:bg-black transition-all shadow-lg active:scale-95 uppercase tracking-widest"
+            >
+              Update Global Remarks
+            </button>
+          </div>
+        )}
+      </div>
 
+      {/* 5. Payments (Fee Details) */}
+      <div className="space-y-3">
+        <SectionHeader 
+          title="Enrollment & Financial Details" 
+          id="payments"
+          currentExpanded={expandedSection}
+          setExpanded={setExpandedSection}
+          icon={CreditCard} 
+          color="text-rose-600"
+        />
+        {expandedSection === 'payments' && (
+          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
+            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Fee Tracking Console</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Payment Status</label>
+                <select
+                    disabled={!canEditPayments}
+                    value={paymentDraft.payment_status}
+                    onChange={(e) => setPaymentDraft((prev) => ({ ...prev, payment_status: e.target.value }))}
+                    className={`w-full border rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/10" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
+                >
+                    <option value="Paid">✓ FULLY PAID</option>
+                    <option value="Partially Paid">⚡ PARTIALLY PAID</option>
+                    <option value="Unpaid">✕ UNPAID</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Total Course Fee</label>
+                <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={!canEditPayments}
+                    value={paymentDraft.total_fees}
+                    onChange={(e) => setPaymentDraft((prev) => ({ ...prev, total_fees: e.target.value }))}
+                    className={`w-full border rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/10" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
+                    placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Total Paid Amount</label>
+                <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={!canEditPayments}
+                    value={paymentDraft.paid_amount}
+                    onChange={(e) => setPaymentDraft((prev) => ({ ...prev, paid_amount: e.target.value }))}
+                    className={`w-full border rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/10" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
+                    placeholder="0.00"
+                />
+              </div>
+            </div>
+            {canEditPayments && (
               <button
-                onClick={() => setShowHistory(false)}
-                className="text-red-500 font-bold"
+                onClick={savePayment}
+                className="w-full py-3 text-[10px] font-black rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-all shadow-lg shadow-rose-100 active:scale-95 uppercase tracking-widest"
               >
-                Close
+                Update Enrollment Financials
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* History Modal (Stays external to expansion logic) */}
+      {showHistory && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50/50">
+              <div>
+                <h3 className="font-black text-slate-800 uppercase tracking-tight">Message Version History</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Audit trail for tracking changes</p>
+              </div>
+              <button onClick={() => setShowHistory(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-400 hover:text-rose-600 transition-colors shadow-sm font-black">
+                ×
               </button>
             </div>
 
-            <table className="w-full text-xs border">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th className="p-2">Subject</th>
-                  <th className="p-2">Description</th>
-                  <th className="p-2">Attachment</th>
-                  <th className="p-2">Edited By</th>
-                  <th className="p-2">Edited At</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {historyData.length === 0 ? (
-                  <tr>
-                    <td colSpan="4" className="p-3 text-center text-slate-400">
-                      No history available
-                    </td>
+            <div className="flex-1 overflow-auto p-5">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead className="bg-slate-50 sticky top-0 z-10">
+                  <tr className="text-[9px] uppercase text-slate-500 font-black">
+                    <th className="p-3 border-b">Version Detail</th>
+                    <th className="p-3 border-b">Modified By</th>
+                    <th className="p-3 border-b">Modified At</th>
                   </tr>
-                ) : (
-                  historyData.map((h) => (
-                    <tr key={h.id} className="border-t">
-                      <td className="p-2">{h.subject}</td>
-                      <td className="p-2 whitespace-pre-wrap">{h.description}</td>
-                      <td className="p-2">
-                        {h.attachment_base64 ? (
-                          h.attachment_type?.startsWith("image") ? (
-                            <img
-                              src={h.attachment_base64}
-                              alt={h.attachment_name}
-                              className="w-12 h-12 object-cover rounded border cursor-pointer"
-                              onClick={() => window.open(h.attachment_base64, "_blank")}
-                            />
-                          ) : h.attachment_type === "application/pdf" ? (
-                            <a href={h.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-red-600 font-bold text-[10px]">
-                              📄 PDF
-                            </a>
-                          ) : (
-                            <a href={h.attachment_base64} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-[10px]">
-                              Download
-                            </a>
-                          )
-                        ) : "-"}
-                      </td>
-                      <td className="p-2">{h.edited_by}</td>
-                      <td className="p-2">
-                        {new Date(h.edited_at).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-
+                </thead>
+                <tbody>
+                  {historyData.length === 0 ? (
+                    <tr><td colSpan={3} className="p-8 text-center text-slate-400 font-bold">NO HISTORY VERSIONS FOUND</td></tr>
+                  ) : (
+                    historyData.map((h, i) => (
+                      <tr key={h.id || i} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors align-top">
+                        <td className="p-3 space-y-2">
+                          <div>
+                              <p className="text-[9px] font-black text-blue-600 uppercase tracking-tighter">Subject</p>
+                              <p className="font-bold text-slate-700">{h.subject}</p>
+                          </div>
+                          <div className="pt-1">
+                               <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Description</p>
+                               <p className="text-slate-600 whitespace-pre-wrap leading-relaxed">{h.description}</p>
+                          </div>
+                          {h.attachment_name && (
+                              <div className="pt-1 flex items-center gap-1.5 text-blue-600 font-bold text-[9px] bg-blue-50/50 p-1.5 rounded-lg w-fit">
+                                  📎 {h.attachment_name}
+                              </div>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <p className="font-black text-slate-700 uppercase tracking-tighter">{h.edited_by_name || "User"}</p>
+                          <p className="text-[10px] text-slate-400 font-medium">{h.edited_by_role || "Staff"}</p>
+                        </td>
+                        <td className="p-3 text-slate-500 whitespace-nowrap tabular-nums">
+                          {new Date(h.edited_at).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button onClick={() => setShowHistory(false)} className="px-6 py-2 text-[10px] font-black rounded-xl bg-slate-800 text-white hover:bg-black transition-all uppercase tracking-widest">
+                    Got it
+                </button>
+            </div>
           </div>
         </div>
       )}
-
     </div>
   );
-
 };
 
 const InfoRow = ({ label, value }) => (

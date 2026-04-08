@@ -145,28 +145,43 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => setIsInitialLoading(false), 700);
 
-    // --- Global CRM Activity Tracking ---
-    let lastPing = 0;
-    const handleActivity = () => {
-      const now = Date.now();
+    const checkToken = async () => {
       const token = localStorage.getItem('token');
-      // Only ping if we have a token (user logged in) and it's been >= 60 seconds
-      if (now - lastPing >= 60000 && token) {
-        lastPing = now;
-        fetch(`${API_BASE_URL_PORTAL}/api/auth/ping`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }).catch(() => { });
+      if (token) {
+        try {
+          const res = await fetch(`${API_BASE_URL_PORTAL}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setAuth(prev => ({ ...prev, user: data }));
+          } else if (res.status === 401) {
+            // Only log out on explicit unauthorized error
+            handleLogout();
+          }
+        } catch (error) {
+          // Ignore network/connection errors to prevent auto-logout when database is busy
+          console.error("Auth check failed:", error);
+        }
       }
     };
+    checkToken();
 
-    document.addEventListener("click", handleActivity);
+    // 3. Tab Close Beacon (marks user offline immediately)
+    const handleUnload = () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const url = `${API_BASE_URL_PORTAL}/api/user/offline`;
+        // Web Beacon doesn't support headers, so we pass token in body via Blob
+        const blob = new Blob([JSON.stringify({ token })], { type: 'application/json' });
+        navigator.sendBeacon(url, blob);
+      }
+    };
+    window.addEventListener("beforeunload", handleUnload);
 
     return () => {
       clearTimeout(timer);
-      document.removeEventListener("click", handleActivity);
+      window.removeEventListener("beforeunload", handleUnload);
     };
   }, []);
 
@@ -176,7 +191,7 @@ export default function App() {
     if (['Main Admin', 'MD', 'GM', 'Super Admin'].includes(r)) return 'SUPER_ADMIN';
     if (['TL', 'Coordinator', 'Head', 'Admin'].includes(r)) return 'ADMIN';
     return 'STAFF';
-  };
+  };  
 
   const handleLogin = (userData, token) => {
     localStorage.setItem('user', JSON.stringify(userData));
