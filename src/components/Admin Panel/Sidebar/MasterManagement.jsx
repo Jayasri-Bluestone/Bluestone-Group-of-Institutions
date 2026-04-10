@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
-import { Plus, Trash2, Database, CheckCircle, Edit3, X, Save, LayoutGrid, Users, Network, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Database, CheckCircle, Edit3, X, Save, LayoutGrid, Users, Network, ChevronUp, ChevronDown, Mail } from 'lucide-react';
 import * as Fa6Icons from 'react-icons/fa6';
 import * as MdIcons from 'react-icons/md';
 import * as IoIcons from 'react-icons/io5';
@@ -60,6 +60,9 @@ const MasterManagement = ({ user }) => {
   const [domainSortOrder, setDomainSortOrder] = useState('asc');
   const [hierarchySortBy, setHierarchySortBy] = useState('id');
   const [hierarchySortOrder, setHierarchySortOrder] = useState('asc');
+  const [systemEmails, setSystemEmails] = useState([]);
+  const [newSystemEmail, setNewSystemEmail] = useState({ label: '', email: '' });
+  const [editingSystemEmail, setEditingSystemEmail] = useState(null);
 
   const sortedDomains = useMemo(() => {
     return [...data].sort((a, b) => {
@@ -203,9 +206,87 @@ const MasterManagement = ({ user }) => {
     const timer = setInterval(() => {
       fetchAll();
       fetchHierarchy();
+      fetchSystemEmails();
     }, AUTO_REFRESH_MS);
     return () => clearInterval(timer);
   }, []);
+
+  const fetchSystemEmails = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/system-emails`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (!res.ok) throw new Error();
+      setSystemEmails(await res.json());
+    } catch {
+      toast.error("Failed to load managed emails");
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'manage_mail_id') {
+      fetchSystemEmails();
+    }
+  }, [activeTab]);
+
+  const addSystemEmail = async () => {
+    if (!newSystemEmail.label.trim() || !newSystemEmail.email.trim()) return;
+    const tid = toast.loading("Adding email ID...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/system-emails`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(newSystemEmail),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Email ID added", { id: tid });
+      setNewSystemEmail({ label: '', email: '' });
+      fetchSystemEmails();
+    } catch {
+      toast.error("Failed to add email ID", { id: tid });
+    }
+  };
+
+  const saveSystemEmail = async () => {
+    if (!editingSystemEmail?.label?.trim() || !editingSystemEmail?.email?.trim()) return;
+    const tid = toast.loading("Saving changes...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/system-emails/${editingSystemEmail.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(editingSystemEmail),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Email ID updated", { id: tid });
+      setEditingSystemEmail(null);
+      fetchSystemEmails();
+    } catch {
+      toast.error("Failed to update email ID", { id: tid });
+    }
+  };
+
+  const deleteSystemEmail = async (id) => {
+    const ok = await confirmToast("Delete this managed email ID?", "Delete");
+    if (!ok) return;
+    const tid = toast.loading("Deleting...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/system-emails/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Deleted successfully", { id: tid });
+      fetchSystemEmails();
+    } catch {
+      toast.error("Delete failed", { id: tid });
+    }
+  };
 
   const addHierarchyRole = async () => {
     if (!newHierarchy.role_name.trim()) return;
@@ -670,6 +751,7 @@ const MasterManagement = ({ user }) => {
             isSuperAdmin ? { id: 'domain_setup', label: 'Domain Setup', icon: LayoutGrid, activeColor: 'text-blue-600' } : null,
             { id: 'user_management', label: 'User Management', icon: Users, activeColor: 'text-indigo-600' },
             isSuperAdmin ? { id: 'user_hierarchy', label: 'User Hierarchy', icon: Network, activeColor: 'text-blue-600' } : null,
+            isSuperAdmin ? { id: 'manage_mail_id', label: 'Manage Mail ID', icon: Mail, activeColor: 'text-rose-600' } : null,
           ].filter(Boolean).map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = tab.icon;
@@ -1298,6 +1380,136 @@ const MasterManagement = ({ user }) => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'manage_mail_id' && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight mb-4 flex items-center gap-2">
+              <Plus size={16} className="text-rose-500" /> Add Managed Email ID
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Label (e.g. Sales Team)</label>
+                <input
+                  className="w-full p-3 border rounded-xl text-sm font-bold bg-slate-50 focus:ring-4 ring-rose-500/5 transition-all outline-none"
+                  placeholder="Recipient Label"
+                  value={newSystemEmail.label}
+                  onChange={e => setNewSystemEmail({ ...newSystemEmail, label: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Email Address</label>
+                <input
+                  className="w-full p-3 border rounded-xl text-sm font-bold bg-slate-50 focus:ring-4 ring-rose-500/5 transition-all outline-none"
+                  placeholder="recipient@example.com"
+                  value={newSystemEmail.email}
+                  onChange={e => setNewSystemEmail({ ...newSystemEmail, email: e.target.value })}
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={addSystemEmail}
+                  className="w-full bg-slate-800 text-white p-3 rounded-xl hover:bg-black transition-all font-bold flex items-center justify-center gap-2"
+                >
+                  <Plus size={18} /> ADD EMAIL
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Mail size={16} className="text-slate-400" />
+                <h3 className="text-xs font-black text-slate-600 uppercase tracking-widest">Managed Mail List</h3>
+              </div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">{systemEmails.length} Records</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50">
+                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Label</th>
+                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Email Address</th>
+                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b text-center">Status</th>
+                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {systemEmails.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className="p-10 text-center text-slate-400 font-bold uppercase text-xs italic">
+                        No managed emails found. Add your first recipient above.
+                      </td>
+                    </tr>
+                  ) : (
+                    systemEmails.map((email) => {
+                      const isEditing = editingSystemEmail?.id === email.id;
+                      return (
+                        <tr key={email.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-4">
+                            {isEditing ? (
+                              <input
+                                className="w-full p-2 border rounded-lg text-sm font-bold bg-white"
+                                value={editingSystemEmail.label}
+                                onChange={e => setEditingSystemEmail({ ...editingSystemEmail, label: e.target.value })}
+                              />
+                            ) : (
+                              <span className="text-sm font-bold text-slate-700">{email.label}</span>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            {isEditing ? (
+                              <input
+                                className="w-full p-2 border rounded-lg text-sm font-bold bg-white"
+                                value={editingSystemEmail.email}
+                                onChange={e => setEditingSystemEmail({ ...editingSystemEmail, email: e.target.value })}
+                              />
+                            ) : (
+                              <span className="text-sm text-slate-500 font-medium">{email.email}</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-center">
+                            {isEditing ? (
+                              <select
+                                className="p-2 border rounded-lg text-xs font-bold"
+                                value={editingSystemEmail.is_active}
+                                onChange={e => setEditingSystemEmail({ ...editingSystemEmail, is_active: Number(e.target.value) })}
+                              >
+                                <option value={1}>ACTIVE</option>
+                                <option value={0}>INACTIVE</option>
+                              </select>
+                            ) : (
+                              <span className={`px-2 py-1 rounded text-[10px] font-black uppercase ${Number(email.is_active) === 1 ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                                {Number(email.is_active) === 1 ? 'Active' : 'Inactive'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-4 text-center">
+                            <div className="flex items-center justify-center gap-3">
+                              {isEditing ? (
+                                <>
+                                  <button onClick={saveSystemEmail} className="text-emerald-600 hover:scale-110 transition-transform"><Save size={16} /></button>
+                                  <button onClick={() => setEditingSystemEmail(null)} className="text-slate-400 hover:scale-110 transition-transform"><X size={16} /></button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={() => setEditingSystemEmail({ ...email })} className="text-blue-500 hover:scale-110 transition-transform"><Edit3 size={16} /></button>
+                                  <button onClick={() => deleteSystemEmail(email.id)} className="text-red-500 hover:scale-110 transition-transform"><Trash2 size={16} /></button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

@@ -136,7 +136,8 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
       sessionExpiredRef.current = true;
       toast.error("Session expired. Please login again.");
       onLogout?.();
-      navigate("/portal", { replace: true });
+      // No need for explicit navigate("/portal") here as onLogout 
+      // updates the parent state which triggers the route guard.
     }
   };
 
@@ -430,7 +431,8 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     let viewQuery = '?view=all';
     if (status === 'follow up') viewQuery = '?view=lead-status';
     else if (status.includes('waiting')) viewQuery = '?view=waiting';
-    else if (status === 'closed') viewQuery = '?view=invalid';
+    else if (status === 'invalid') viewQuery = '?view=invalid';
+    else if (status === 'dropped') viewQuery = '?view=dropped';
     else if (status === 'enrolled') {
       viewQuery = '?view=payment';
     }
@@ -607,14 +609,16 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     { name: "All Leads Status (Confirmed Leads)", path: "/portal/bgi/lead-status" },
     { name: "Waiting for Confirmation", path: "/portal/bgi/waiting-confirmation" },
     { name: "Enrollment Status", path: "/portal/bgi/payment-status" },
-    { name: "Closed Enquiries", path: "/portal/bgi/invalid-enquiries" },
+    { name: "Dropped Leads", path: "/portal/bgi/dropped-leads" },
+    { name: "Invalid Enquiries", path: "/portal/bgi/invalid-enquiries" },
   ];
   const buildDomainSubMenu = (domainPath) => [
     { name: "All Enquiries (New)", path: `${domainPath}?view=all` },
     { name: "All Leads Status (Confirmed Leads)", path: `${domainPath}?view=lead-status` },
     { name: "Waiting for Confirmation", path: `${domainPath}?view=waiting` },
     { name: "Enrollment Status", path: `${domainPath}?view=payment` },
-    { name: "Closed Enquiries", path: `${domainPath}?view=invalid` },
+    { name: "Dropped Leads", path: `${domainPath}?view=dropped` },
+    { name: "Invalid Enquiries", path: `${domainPath}?view=invalid` },
   ];
 
   const isSubMenuPathActive = (subPath) => {
@@ -874,7 +878,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
                   )}
                 </Link>
               ))}
-            {(isAdminTier || userDomainsList.length > 0) && (
+            {(isAdminTier || userDomainsList.length > 1) && (
               <div>
                 <button
                   onClick={() => {

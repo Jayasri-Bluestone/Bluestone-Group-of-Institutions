@@ -25,10 +25,10 @@ const Dashboard = ({ user }) => {
     const navigate = useNavigate();
 
     const [stats, setStats] = useState({
-        totalEnquiry: 0, totalFollowup: 0, totalAdmission: 0,
+        totalEnquiry: 0, totalFollowup: 0, totalEnrolled: 0,
         totalPending: 0,
         totalInvalid: 0,
-        todayEnquiry: 0, todayFollowup: 0, todayAdmission: 0,
+        todayEnquiry: 0, todayFollowup: 0, todayEnrolled: 0,
         todayPending: 0,
         todayInvalid: 0
     });
@@ -135,7 +135,8 @@ const Dashboard = ({ user }) => {
         let viewQuery = '?view=all';
         if (status === 'follow up') viewQuery = '?view=lead-status';
         else if (status.includes('waiting')) viewQuery = '?view=waiting';
-        else if (status === 'closed') viewQuery = '?view=invalid';
+        else if (status === 'invalid') viewQuery = '?view=invalid';
+        else if (status === 'dropped') viewQuery = '?view=dropped';
         else if (status === 'enrolled') viewQuery = `?view=lead-status&status=${encodeURIComponent('Enrolled')}`;
 
         navigate(`/portal/domain/${slug}${viewQuery}`, {
@@ -194,7 +195,7 @@ const Dashboard = ({ user }) => {
         if (useGlobalBgi) {
             if (cardType === 'totalEnquiry') navigate(`/portal/bgi/all-enquiry${buildQuery()}`);
             else if (cardType === 'totalFollowup') navigate(`/portal/bgi/lead-status${buildQuery()}`);
-            else if (cardType === 'totalAdmission') navigate(`/portal/bgi/payment-status${buildQuery()}`);
+            else if (cardType === 'totalEnrolled') navigate(`/portal/bgi/payment-status${buildQuery()}`);
             else if (cardType === 'totalPending') navigate(`/portal/bgi/waiting-confirmation${buildQuery()}`);
             else if (cardType === 'totalInvalid') navigate(`/portal/bgi/invalid-enquiries${buildQuery()}`);
         } else {
@@ -202,7 +203,7 @@ const Dashboard = ({ user }) => {
             let view = 'all';
             let extra = [];
             if (cardType === 'totalFollowup') view = 'lead-status';
-            else if (cardType === 'totalAdmission') { view = 'payment'; }
+            else if (cardType === 'totalEnrolled') { view = 'payment'; }
             else if (cardType === 'totalPending') view = 'waiting';
             else if (cardType === 'totalInvalid') view = 'invalid';
 
@@ -343,12 +344,12 @@ const Dashboard = ({ user }) => {
             setStats({
                 totalEnquiry: statsData.totals.enquiry,
                 totalFollowup: statsData.totals.followup,
-                totalAdmission: statsData.totals.admission,
+                totalEnrolled: statsData.totals.enrolled,
                 totalPending: statsData.totals.pending,
                 totalInvalid: statsData.totals.invalid,
                 todayEnquiry: statsData.periods.enquiry,
                 todayFollowup: statsData.periods.followup,
-                todayAdmission: statsData.periods.admission,
+                todayEnrolled: statsData.periods.enrolled,
                 todayPending: statsData.periods.pending,
                 todayInvalid: statsData.periods.invalid,
             });
@@ -397,7 +398,8 @@ const Dashboard = ({ user }) => {
         setIsTrendLoading(true);
         const domain = (isSuperAdmin || hasMultipleDomains) ? appliedGlobalFilter : user.domain;
         try {
-            let url = `${API_BASE_URL_PORTAL}/api/dashboard/enquiry-trends?range=${appliedTrendRange}&domain=${domain}`;
+            const tzOffset = new Date().getTimezoneOffset();
+            let url = `${API_BASE_URL_PORTAL}/api/dashboard/enquiry-trends?range=${appliedTrendRange}&domain=${domain}&tzOffset=${tzOffset}`;
             if (appliedStaffId && appliedStaffId !== 'All') url += `&userId=${appliedStaffId}`;
 
             if (appliedTrendRange === 'custom') {
@@ -657,7 +659,7 @@ const Dashboard = ({ user }) => {
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                             <StatCard title="Total Enquiry" value={stats.totalEnquiry} icon={<Users size={24} />} color="bg-gradient-to-br from-rose-700 to-rose-500" onClick={() => handleCardClick('totalEnquiry')} />
                             <StatCard title="Total Confirmed Leads" value={stats.totalFollowup} icon={<PhoneCall size={24} />} color="bg-gradient-to-br from-orange-600 to-amber-500" onClick={() => handleCardClick('totalFollowup')} />
-                            <StatCard title="Total Enrolled" value={stats.totalAdmission} icon={<GraduationCap size={24} />} color="bg-gradient-to-br from-emerald-700 to-emerald-500" onClick={() => handleCardClick('totalAdmission')} />
+                            <StatCard title="Total Enrolled" value={stats.totalEnrolled} icon={<GraduationCap size={24} />} color="bg-gradient-to-br from-emerald-700 to-emerald-500" onClick={() => handleCardClick('totalEnrolled')} />
                             <StatCard title="Total Pendings" value={stats.totalPending} icon={<AlertCircle size={24} />} color="bg-gradient-to-br from-slate-800 to-slate-600" onClick={() => handleCardClick('totalPending')} />
                             <StatCard title="Total Invalid" value={stats.totalInvalid} icon={<XCircle size={24} />} color="bg-gradient-to-br from-red-700 to-red-500" onClick={() => handleCardClick('totalInvalid')} />
                         </div>
@@ -684,10 +686,10 @@ const Dashboard = ({ user }) => {
                             />
                             <MiniStatCard
                                 title="Enrolled"
-                                value={stats.todayAdmission}
+                                value={stats.todayEnrolled}
                                 color="text-emerald-600"
                                 bgColor="bg-emerald-100"
-                                onClick={() => handleCardClick('totalAdmission', true)}
+                                onClick={() => handleCardClick('totalEnrolled', true)}
                             />
                             <MiniStatCard
                                 title="Pendings"
@@ -734,8 +736,8 @@ const Dashboard = ({ user }) => {
                         >
                             <option value="All">All Stats</option>
                             <option value="total">Total Enquiries</option>
-                            <option value="followup">Follow-ups</option>
-                            <option value="admission">Admissions</option>
+                            <option value="followup">Confirmed Leads</option>
+                            <option value="enrolled">Enrolled</option>
                         </select>
                     </div>
                 </div>
@@ -750,8 +752,8 @@ const Dashboard = ({ user }) => {
                                 </div>
                             </div>
                         ) : trendData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={trendData}>
+                            <ResponsiveContainer width="100%" height={350} minWidth={0} debounce={1}>
+                                <AreaChart data={trendRange === 'day' ? trendData.filter(d => parseInt(d.label) >= 9 && parseInt(d.label) <= 18) : trendData}>
                                     <defs>
                                         <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
@@ -760,6 +762,10 @@ const Dashboard = ({ user }) => {
                                         <linearGradient id="colorFollow" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1} />
                                             <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorEnrolled" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -772,12 +778,10 @@ const Dashboard = ({ user }) => {
                                         tickFormatter={(val) => {
                                             if (trendRange === 'day') {
                                                 const h = parseInt(val);
-                                                const nextH = h + 1;
-                                                const formatH = (hour) => {
-                                                    const hh = hour % 24;
-                                                    return hh > 12 ? hh - 12 : (hh === 0 ? 12 : hh);
-                                                };
-                                                return `${formatH(h)}-${formatH(nextH)}`;
+                                                const start = h % 12 || 12;
+                                                const nh = (h + 1) % 24;
+                                                const end = nh % 12 || 12;
+                                                return `${start}-${end}`;
                                             }
                                             if (trendRange === 'year') {
                                                 const [y, m] = val.split('-');
@@ -804,14 +808,11 @@ const Dashboard = ({ user }) => {
                                         labelFormatter={(val) => {
                                             if (trendRange === 'day') {
                                                 const h = parseInt(val);
-                                                const nextH = h + 1;
-                                                const formatH = (hour) => {
-                                                    const hh = hour % 24;
-                                                    const timeSuffix = hh >= 12 ? 'PM' : 'AM';
-                                                    const displayH = hh > 12 ? hh - 12 : (hh === 0 ? 12 : hh);
-                                                    return `${displayH} ${timeSuffix}`;
-                                                };
-                                                return `${formatH(h)} - ${formatH(nextH)}`;
+                                                const start = h % 12 || 12;
+                                                const nh = (h + 1) % 24;
+                                                const end = nh % 12 || 12;
+                                                const ampm = h >= 12 ? 'PM' : 'AM';
+                                                return `${start}-${end} ${ampm}`;
                                             }
                                             return val;
                                         }}
@@ -830,7 +831,7 @@ const Dashboard = ({ user }) => {
                                     )}
                                     {(trendStatus === 'All' || trendStatus === 'followup') && (
                                         <Area
-                                            name="Follow-ups"
+                                            name="Confirmed Leads"
                                             type="monotone"
                                             dataKey="followup"
                                             stroke="#f59e0b"
@@ -841,14 +842,15 @@ const Dashboard = ({ user }) => {
                                             animationDuration={1500}
                                         />
                                     )}
-                                    {(trendStatus === 'All' || trendStatus === 'admission') && (
+                                    {(trendStatus === 'All' || trendStatus === 'enrolled') && (
                                         <Area
-                                            name="Admissions"
+                                            name="Enrolled"
                                             type="monotone"
-                                            dataKey="admission"
+                                            dataKey="enrolled"
                                             stroke="#10b981"
                                             strokeWidth={2}
-                                            fill="transparent"
+                                            fillOpacity={1}
+                                            fill="url(#colorEnrolled)"
                                             animationDuration={1500}
                                         />
                                     )}

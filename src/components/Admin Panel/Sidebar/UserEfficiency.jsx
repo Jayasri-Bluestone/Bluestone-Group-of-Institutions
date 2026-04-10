@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area
@@ -12,6 +12,7 @@ import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 import { toast } from 'react-hot-toast';
 import { exportToExcel } from "../../../utils/exportExcel";
 import { formatOverallReport, formatIndividualReport, downloadExcelAOA } from "../../../utils/reportUtils";
+import { parseAsIST, formatToLocalDateTime } from "../../../utils/timeUtils";
 
 // --- PROFESSIONAL COLOR SYSTEM ---
 const CHART_COLORS = [
@@ -37,10 +38,11 @@ const UserEfficiency = ({ user }) => {
   const [loadingHourly, setLoadingHourly] = useState(false);
 
   // --- API FETCHERS ---
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      let url = `${API_BASE_URL_PORTAL}/api/admin/user-efficiency?range=${timeRange}`;
+      const tzOffset = new Date().getTimezoneOffset();
+      let url = `${API_BASE_URL_PORTAL}/api/admin/user-efficiency?range=${timeRange}&tzOffset=${tzOffset}`;
       if (timeRange === 'day') {
         url += `&date=${selectedDate}`;
       } else {
@@ -63,12 +65,13 @@ const UserEfficiency = ({ user }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeRange, selectedDate, startDate, endDate]);
 
-  const fetchIndividualData = async (userId) => {
+  const fetchIndividualData = useCallback(async (userId) => {
     setLoadingHourly(true);
     try {
-      let url = `${API_BASE_URL_PORTAL}/api/admin/user-efficiency?userId=${userId}&range=${timeRange}`;
+      const tzOffset = new Date().getTimezoneOffset();
+      let url = `${API_BASE_URL_PORTAL}/api/admin/user-efficiency?userId=${userId}&range=${timeRange}&tzOffset=${tzOffset}`;
       if (timeRange === 'day') {
         url += `&date=${selectedDate}`;
       } else {
@@ -95,13 +98,18 @@ const UserEfficiency = ({ user }) => {
     } finally {
       setLoadingHourly(false);
     }
-  };
+  }, [timeRange, selectedDate, startDate, endDate]);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000); // 30s auto-refresh for live status
+    const interval = setInterval(() => {
+      // Only fetch if the tab is visible to save database connections
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, 180000); // Increased from 30s to 3m to stay under 500 connections/hour limit
     return () => clearInterval(interval);
-  }, [timeRange, selectedDate, startDate, endDate]);
+  }, [timeRange, selectedDate, startDate, endDate, fetchData]);
 
   useEffect(() => {
     if (selectedUser) {
@@ -141,8 +149,8 @@ const UserEfficiency = ({ user }) => {
 
     if (!lastActiveAt) return { label: 'OFFLINE', color: 'slate', isOnline: false };
 
-    // Parse date safely
-    const lastActive = new Date(lastActiveAt);
+    // Parse date safely as IST
+    const lastActive = parseAsIST(lastActiveAt);
     if (isNaN(lastActive.getTime())) return { label: 'OFFLINE', color: 'slate', isOnline: false };
 
     const now = new Date();
@@ -209,6 +217,8 @@ const UserEfficiency = ({ user }) => {
 
   const filteredChartData = data.chartData.map(d => {
     let dayTotal = 0;
+    let userCount = 0;
+    let activeUsers = [];
     const entry = { date: d.date };
     sortedUserTotals.forEach(u => {
       const name = u.userName || u.name;
@@ -216,9 +226,15 @@ const UserEfficiency = ({ user }) => {
         const val = d[name];
         entry[name] = val;
         dayTotal += val;
+        if (val > 0) {
+          userCount++;
+          activeUsers.push(name);
+        }
       }
     });
     entry.total = Number(dayTotal.toFixed(2));
+    entry.userCount = userCount;
+    entry.activeUsers = activeUsers;
     return entry;
   });
 
@@ -296,16 +312,15 @@ const UserEfficiency = ({ user }) => {
     // --- DAY VIEW: HOURLY SLOTS ---
     if (timeRange === 'day') {
       const h = parseInt(val);
-      if (h === 9) return '9.30-10am';
       const start = h % 12 || 12;
-      const end = (h + 1) % 12 || 12;
-      const endAmPm = (h + 1) >= 12 && (h + 1) < 24 ? 'pm' : 'am';
-      return `${start}-${end}${endAmPm}`;
+      const nh = (h + 1) % 24;
+      const end = nh % 12 || 12;
+      return `${start}-${end}`;
     }
 
     // --- WEEK VIEW: MONDAY 27/03/2026 ---
     if (timeRange === 'week') {
-      const date = new Date(val);
+      const date = parseAsIST(val);
       if (isNaN(date.getTime())) return val;
       return date.toLocaleDateString('en-GB', { 
         weekday: 'long', 
@@ -319,7 +334,7 @@ const UserEfficiency = ({ user }) => {
     if (timeRange === 'month') {
       try {
         const [year, month] = val.split('-');
-        const date = new Date(year, month - 1);
+        const date = parseAsIST(`${year}-${month}-01`);
         return date.toLocaleDateString('en-US', { 
           month: 'short', 
           year: 'numeric' 
@@ -343,15 +358,39 @@ const UserEfficiency = ({ user }) => {
           <p className="font-black text-blue-600 text-[10px] uppercase tracking-[0.2em] mb-3 border-b border-slate-100 pb-2">
             {timeRange === 'day' ? `${getXAxisTickFormatter(label)} SLOT` : getXAxisTickFormatter(label)}
           </p>
-          <div className="flex items-center justify-between gap-8">
-            <span className="flex items-center gap-2">
-              <div className="w-1.5 h-6 bg-blue-500 rounded-full" />
-              <span className="text-xs font-bold text-slate-500">UTILIZATION</span>
-            </span>
-            <span className="text-lg font-black text-slate-900">
-              {total} <span className="text-[10px] text-slate-400">MIN</span>
-              <span className="text-[10px] text-slate-400 ml-1">({hmmVal} hrs)</span>
-            </span>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-8">
+              <span className="flex items-center gap-2">
+                <div className="w-1.5 h-6 bg-blue-500 rounded-full" />
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Users</span>
+              </span>
+              <span className="text-lg font-black text-slate-900">
+                {dataPoint.userCount} <span className="text-[10px] text-slate-400">STAFF</span>
+              </span>
+            </div>
+            
+            {dataPoint.activeUsers && dataPoint.activeUsers.length > 0 && (
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Staff Online:</p>
+                <div className="flex flex-wrap gap-1 max-w-[200px]">
+                  {dataPoint.activeUsers.map((name, idx) => (
+                    <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[9px] font-bold border border-blue-100">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-8 pt-1">
+              <span className="flex items-center gap-2">
+                <div className="w-1.5 h-4 bg-slate-200 rounded-full" />
+                <span className="text-[10px] font-bold text-slate-400">TOTAL USAGE</span>
+              </span>
+              <span className="text-xs font-bold text-slate-500">
+                {hmmVal} <span className="text-[10px]">HRS</span>
+              </span>
+            </div>
           </div>
         </div>
       );
@@ -593,8 +632,8 @@ const UserEfficiency = ({ user }) => {
                   </div>
 
                   <div className="h-[400px] w-full relative z-10">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={filteredChartData}>
+                    <ResponsiveContainer width="100%" height={400} minWidth={0} debounce={1}>
+                      <AreaChart data={timeRange === 'day' ? filteredChartData.filter(d => parseInt(d.date) >= 9 && parseInt(d.date) <= 18) : filteredChartData}>
                         <defs>
                           <linearGradient id="mainGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
@@ -607,23 +646,22 @@ const UserEfficiency = ({ user }) => {
                           tickFormatter={getXAxisTickFormatter}
                           axisLine={false} tickLine={false}
                           tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
-                          ticks={timeRange === 'day' ? [9, 10, 11, 12, 13, 14, 15, 16, 17] : undefined}
+                          ticks={timeRange === 'day' ? [9, 10, 11, 12, 13, 14, 15, 16, 17, 18] : undefined}
                           interval={0}
                           dy={20}
                         />
                         <YAxis
                           axisLine={false} tickLine={false}
                           tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
-                          domain={timeRange === 'day' ? [0, 60] : ['auto', 'auto']}
-                          ticks={timeRange === 'day' ? [0, 15, 30, 45, 60] :
-                            timeRange === 'week' ? [0, 120, 240, 360, 480, 600] :
-                              [0, 600, 1200, 1800, 2400, 3000]}
-                          tickFormatter={(val) => timeRange === 'day' ? val : (val / 60).toFixed(0)}
+                          domain={timeRange === 'day' ? [0, 'auto'] : ['auto', 'auto']}
+                          // Allow better scaling for user counts
+                          allowDecimals={false}
+                          tickFormatter={(val) => val}
                         />
                         <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(59, 130, 246, 0.2)', strokeWidth: 40 }} />
                         <Area
                           type="monotone"
-                          dataKey="total"
+                          dataKey="userCount"
                           stroke="#3b82f6"
                           strokeWidth={4}
                           fill="url(#mainGrad)"
@@ -702,7 +740,8 @@ const UserEfficiency = ({ user }) => {
                                     </div>
                                     {!status.isOnline && (
                                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
-                                        Seen {status.label}
+                                        Seen {status.label} 
+                                        {u.last_active_at && ` (${formatToLocalDateTime(u.last_active_at).split(' ')[1]} ${formatToLocalDateTime(u.last_active_at).split(' ')[2]})`}
                                       </span>
                                     )}
                                   </div>
@@ -815,7 +854,7 @@ const UserEfficiency = ({ user }) => {
               </div>
             ) : (
               <div className="h-[400px] w-full relative z-10">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={400} minWidth={0} debounce={1}>
                   <AreaChart 
                     data={
                       timeRange === 'day' 

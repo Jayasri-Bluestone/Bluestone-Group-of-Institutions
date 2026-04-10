@@ -67,8 +67,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                   <div className="relative z-10 w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm border border-white/30 shadow-inner">
                     <RiAdminFill size={32} />
                   </div>
-          <h1 className="relative z-10 text-2xl font-black text-white tracking-tighter uppercase">Bluestone CRM</h1>
-          <p className="relative z-10 text-white/80 text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Leads Management System</p>
+          <h1 className="relative z-10 text-2xl font-black text-white tracking-tighter uppercase">BGOI</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-5">
@@ -122,7 +121,7 @@ const LoginPage = ({ onLoginSuccess }) => {
             disabled={loading} 
             className="w-full bg-red-600 hover:bg-red-600 text-white font-bold py-4 rounded-xl text-sm uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:bg-slate-300"
           >
-            {loading ? "Authenticating..." : "Secure Login"} 
+            {loading ? "Authenticating..." : "Login"} 
           </button>
         </form>
       </div>

@@ -4,6 +4,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { confirmToast } from '../../utils/toastConfirm';
 import { API_BASE_URL } from '../../apiConfig';
 import { exportToExcel } from '../../utils/exportExcel';
+import { parseAsIST } from '../../utils/timeUtils';
 
 export function ApprovedLeads() {
   const [approvedLeads, setApprovedLeads] = useState([]);
@@ -33,10 +34,10 @@ export function ApprovedLeads() {
 
   const formatDateTime = (dateString) => {
     if (!dateString) return { date: "N/A", time: "" };
-    const date = new Date(dateString);
+    const date = parseAsIST(dateString);
     return {
-      date: date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-      time: date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+      date: date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      time: date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
     };
   };
 

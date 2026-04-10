@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
@@ -13,6 +14,7 @@ import {
 import Pagination from '../Layout/Pagination';
 import LoadingScreen from '../Layout/LoadingScreen';
 import { confirmToast } from '../../../utils/toastConfirm';
+import { parseAsIST, formatToLocalDateTime } from '../../../utils/timeUtils';
 import { exportToExcel } from '../../../utils/exportExcel';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 import { RiDeleteBack2Fill, RiDeleteBin4Fill } from 'react-icons/ri';
@@ -131,7 +133,7 @@ const DomainPage = ({ domain, user }) => {
                 let rows = Array.isArray(result.leads) ? result.leads : [];
                 rows = rows.filter((lead) => {
                     const st = String(lead.status || '').trim().toLowerCase();
-                    const knownNonWaiting = ['new', 'follow up', 'enrolled', 'closed'];
+                    const knownNonWaiting = ['new', 'follow up', 'enrolled', 'invalid', 'dropped'];
                     return st.includes('waiting') || !knownNonWaiting.includes(st);
                 });
 
@@ -178,8 +180,9 @@ const DomainPage = ({ domain, user }) => {
             if (interestFilter !== 'All') params.set('interest', interestFilter);
             if (viewMode === 'all') params.set('status', 'New');
             else if (viewMode === 'lead-status') params.set('status', 'Follow Up');
-            else if (viewMode === 'invalid') params.set('status', 'Closed');
-            else if (viewMode === 'payment') params.set('payment_status', 'Paid,Partially Paid');
+            else if (viewMode === 'invalid') params.set('status', 'Invalid');
+            else if (viewMode === 'dropped') params.set('status', 'Dropped');
+            else if (viewMode === 'payment') params.set('payment_status', 'Advance payment,Partial Payment,Full payment,No Fee');
             else if (statusFilter !== 'All') {
                 params.set('status', statusFilter);
             }
@@ -401,9 +404,10 @@ const DomainPage = ({ domain, user }) => {
     const updateStatus = async (leadId, newStatus, customSuccessMessage = null, leadName = '') => {
         if (newStatus === "Enrolled") {
             const lead = data.leads.find(l => l.id === leadId);
-            const ps = (lead?.payment_status || "").toLowerCase();
-            if (ps === "unpaid" || ps === "") {
-                toast.error("Update payment status");
+            const ps = (lead?.payment_status || "").trim().toLowerCase();
+            const allowedForEnrollment = ["advance payment", "partial payment", "full payment", "no fee"];
+            if (!allowedForEnrollment.includes(ps)) {
+                toast.error("Please update payment status before enrolling.");
                 fetchDomainData(data.page);
                 return false;
             }
@@ -429,6 +433,7 @@ const DomainPage = ({ domain, user }) => {
             if (res.ok) {
                 hasFocusedLeadRef.current = false;
                 toast.success(customSuccessMessage || `Status updated to ${newStatus}`);
+                hasFocusedLeadRef.current = false;
                 fetchDomainData(data.page);
                 return true;
             } else {
@@ -503,7 +508,7 @@ const DomainPage = ({ domain, user }) => {
         const matchesPending = !pendingOnly || isPendingLead;
         const matchesToday = !todayOnly || (() => {
             if (!lead.created_at) return false;
-            const leadDate = new Date(lead.created_at);
+            const leadDate = parseAsIST(lead.created_at);
             const now = new Date();
             return (
                 leadDate.getFullYear() === now.getFullYear() &&
@@ -683,7 +688,8 @@ const DomainPage = ({ domain, user }) => {
         all: 'All Enquiries',
         'lead-status': 'All Confirmed Leads Status',
         waiting: 'Waiting for Confirmation',
-        payment: 'All Payment Status',
+        payment: 'All Enrolled Status',
+        dropped: 'All Dropped Leads',
         invalid: 'All Invalid Enquiries',
     };
     const activeViewTitle = viewTitleMap[viewMode] || viewTitleMap.all;
@@ -887,7 +893,7 @@ const DomainPage = ({ domain, user }) => {
                                     {isStaffTier ? 'Assigned By' : 'Assigned To'}
                                 </th>
                                 <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Remarks</th>
-                                <SortHeader label="Date" sortKey="created_at" className="!p-2.5 text-[10px]" />
+                                <SortHeader label="Date & Time" sortKey="created_at" className="!p-2.5 text-[10px]" />
                                 <SortHeader label="Status" sortKey="status" className="!p-2.5 text-[10px]" />
                                 <th className="p-2.5 text-center text-[10px] font-black text-slate-500 uppercase tracking-wider">Actions</th>
                             </tr>
@@ -949,12 +955,12 @@ const DomainPage = ({ domain, user }) => {
                                     <td 
                                         className="p-2.5 border-r border-slate-50 min-w-[150px] cursor-pointer group"
                                     >
-                                        <p className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors" title={lead.remarks}>
-                                            {lead.remarks || "-"}
+                                        <p className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors" title={lead.latest_remark_subject || lead.remarks}>
+                                            {lead.latest_remark_subject || lead.remarks || "-"}
                                         </p>
                                     </td>
-                                    <td className="p-2.5 text-slate-500 text-[11px] font-bold border-r border-slate-50 leading-tight">
-                                        {new Date(lead.created_at).toLocaleDateString('en-GB')}
+                                    <td className="p-2.5 text-slate-500 text-[10px] font-bold border-r border-slate-50 leading-tight">
+                                        {formatToLocalDateTime(lead.created_at)}
                                     </td>
                                     <td className="p-2.5 border-r border-slate-50">
                                         <select
@@ -966,7 +972,8 @@ const DomainPage = ({ domain, user }) => {
                                             <option value="Follow Up">Confirmed Leads</option>
                                             <option value="Waiting for Confirmation">Waiting for Confirmation</option>
                                             <option value="Enrolled">Enrolled</option>
-                                            <option value="Closed">Closed</option>
+                                            <option value="Dropped">Dropped</option>
+                                            <option value="Invalid">Invalid</option>
                                         </select>
                                     </td>
                                     <td className="p-2.5">
@@ -1163,7 +1170,8 @@ const getStatusStyle = (status) => {
         case 'Follow Up': return 'bg-orange-100 text-orange-700';
         case 'Waiting for Confirmation': return 'bg-amber-100 text-amber-700';
         case 'Enrolled': return 'bg-green-100 text-green-700';
-        case 'Closed': return 'bg-red-100 text-red-700';
+        case 'Dropped': return 'bg-slate-200 text-slate-700';
+        case 'Invalid': return 'bg-red-100 text-red-700';
         default: return 'bg-slate-100 text-slate-700';
     }
 };

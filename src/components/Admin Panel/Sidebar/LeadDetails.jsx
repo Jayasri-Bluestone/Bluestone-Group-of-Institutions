@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { RefreshCcw, ChevronUp, ChevronDown, MessageSquare, User, PenTool, CreditCard } from "lucide-react";
+import { RefreshCcw, ChevronUp, Plus, ChevronDown, MessageSquare, User, PenTool, CreditCard, ChevronRight, Mail } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import LoadingScreen from "../Layout/LoadingScreen";
+import { formatToLocalDateTime, parseAsIST } from "../../../utils/timeUtils";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import { confirmToast } from "../../../utils/toastConfirm";
 
@@ -33,6 +35,7 @@ const LeadDetails = ({ user }) => {
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [historyData, setHistoryData] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [managedEmails, setManagedEmails] = useState([]);
   
   // Visibility States
   // Visibility States (Accordion Layout)
@@ -48,10 +51,11 @@ const LeadDetails = ({ user }) => {
     ref_id: "",
     subject: "",
     description: "",
+    attachmentType: "",
+    includeCandidateBCC: true,
     recipientUserIds: [],
-    attachment: null,
-    attachmentName: "",
-    attachmentType: ""
+    systemRecipientIds: [],
+    primarySystemEmailId: ""
   });
 
   const fetchRemarkMessages = async () => {
@@ -67,6 +71,19 @@ const LeadDetails = ({ user }) => {
       setRemarkMessages(Array.isArray(json) ? json : []);
     } catch {
       setRemarkMessages([]);
+    }
+  };
+
+  const fetchManagedEmails = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/system-emails`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setManagedEmails(Array.isArray(json) ? json.filter(e => Number(e.is_active) === 1) : []);
+    } catch {
+      setManagedEmails([]);
     }
   };
 
@@ -89,6 +106,7 @@ const LeadDetails = ({ user }) => {
   const fetchLead = async () => {
     setLoading(true);
     try {
+      await Promise.all([fetchRemarkMessages(), fetchDomainStaff(), fetchManagedEmails()]);
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
@@ -105,8 +123,17 @@ const LeadDetails = ({ user }) => {
 
       setRemarksDraft(json.remarks || "");
 
+      const refundStatuses = ['Partial refund', 'Fully refund', 'No refund', 'Refund pending'];
+      const isDropped = json.status === "Dropped";
+      let initialPayStatus = json.payment_status || (isDropped ? "Refund pending" : "Pending payment");
+
+      // If dropped but current status matches active categories, default to Refund pending
+      if (isDropped && !refundStatuses.includes(initialPayStatus)) {
+          initialPayStatus = "Refund pending";
+      }
+
       setPaymentDraft({
-        payment_status: json.payment_status || "Unpaid",
+        payment_status: initialPayStatus,
         total_fees: json.total_fees ?? 0,
         paid_amount: json.paid_amount ?? 0,
       });
@@ -176,7 +203,13 @@ const LeadDetails = ({ user }) => {
         throw new Error(err.msg || err.error || "Save failed");
       }
       toast.success("Payment details updated", { id: tid, duration: 3000 });
-      setLead((prev) => (prev ? { ...prev, ...paymentDraft, status: "Enrolled" } : prev));
+      
+      const refundStatuses = ['Partial refund', 'Fully refund', 'No refund', 'Refund pending'];
+      const nextStatus = (paymentDraft.payment_status !== 'Pending payment' && !refundStatuses.includes(paymentDraft.payment_status)) 
+        ? 'Enrolled' 
+        : lead.status;
+
+      setLead((prev) => (prev ? { ...prev, ...paymentDraft, status: nextStatus } : prev));
     } catch (err) {
       toast.error(err.message || "Save failed", { id: tid, duration: 4000 });
     }
@@ -234,6 +267,19 @@ const LeadDetails = ({ user }) => {
     });
   };
 
+  const toggleSystemRecipient = (id) => {
+    const idNum = Number(id);
+    setMessageDraft((prev) => {
+      const exists = (prev.systemRecipientIds || []).includes(idNum);
+      return {
+        ...prev,
+        systemRecipientIds: exists
+          ? prev.systemRecipientIds.filter((i) => i !== idNum)
+          : [...(prev.systemRecipientIds || []), idNum],
+      };
+    });
+  };
+
   const saveAndSendMessage = async (sendMail = true) => {
     if (
       !String(messageDraft.ref_id).trim() ||
@@ -259,6 +305,9 @@ const LeadDetails = ({ user }) => {
         subject: messageDraft.subject,
         description: messageDraft.description,
         recipientUserIds: messageDraft.recipientUserIds,
+        systemRecipientIds: messageDraft.systemRecipientIds,
+        primaryRecipientId: messageDraft.primarySystemEmailId,
+        includeCandidateCC: messageDraft.includeCandidateBCC,
         attachment_base64: messageDraft.attachment,
         attachment_name: messageDraft.attachmentName,
         attachment_type: messageDraft.attachmentType,
@@ -289,6 +338,9 @@ const LeadDetails = ({ user }) => {
         subject: "",
         description: "",
         recipientUserIds: messageDraft.recipientUserIds,
+        systemRecipientIds: [],
+        primarySystemEmailId: "",
+        includeCandidateBCC: true,
         attachment: null,
         attachmentName: "",
         attachmentType: ""
@@ -331,6 +383,8 @@ const LeadDetails = ({ user }) => {
       subject: message.subject || "",
       description: message.description || "",
       recipientUserIds: applicableIds,
+      systemRecipientIds: [],
+      primarySystemEmailId: "",
       attachment: message.attachment_base64 || null,
       attachmentName: message.attachment_name || "",
       attachmentType: message.attachment_type || ""
@@ -405,66 +459,88 @@ const LeadDetails = ({ user }) => {
   const SectionHeader = ({ title, id, currentExpanded, setExpanded, icon: Icon, color = "text-slate-400" }) => {
     const isExpanded = currentExpanded === id;
     return (
-        <div 
-            className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between group cursor-pointer hover:border-slate-300 transition-all shadow-sm"
+        <button 
+            className={`w-full flex items-center justify-between p-5 text-left transition-all duration-300 border-none outline-none group
+              ${isExpanded ? "bg-slate-50/80" : "bg-white hover:bg-slate-50/50"}
+            `}
             onClick={() => setExpanded(isExpanded ? null : id)}
         >
-            <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-slate-50 ${color}`}>
-                    <Icon size={18} />
+            <div className="flex items-center gap-4">
+                <div className={`p-2.5 rounded-xl transition-all duration-300 ${isExpanded ? `bg-white shadow-sm ${color}` : "bg-slate-50 text-slate-400 group-hover:bg-white group-hover:shadow-sm"}`}>
+                    <Icon size={20} strokeWidth={isExpanded ? 2.5 : 2} />
                 </div>
                 <div>
-                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">{title}</h3>
+                    <h3 className={`text-base transition-all duration-300 ${isExpanded ? "font-bold text-slate-900" : "font-semibold text-slate-600 tracking-tight"}`}>
+                        {title}
+                    </h3>
                 </div>
             </div>
-            <div className={`transition-all duration-300 ${isExpanded ? "text-slate-600 rotate-180" : "text-red-500"}`}>
-                <ChevronDown size={25} />
+            <div className={`transition-all duration-500 rounded-full p-1 ${isExpanded ? "bg-slate-200/50 text-slate-900 rotate-180" : "bg-transparent text-slate-300 group-hover:text-slate-400"}`}>
+                <ChevronDown size={20} />
             </div>
-        </div>
+        </button>
     );
   };
 
   return (
     <div className="space-y-4 pb-20">
       {/* 1. Header (Static) */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between shadow-sm">
-        <div>
-          <h2 className="text-xl font-black text-slate-800 tracking-tight tracking-tight">Lead Details</h2>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{lead.lead_code || `#${lead.id}`} • {lead.student_name}</p>
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 flex items-center justify-between shadow-sm">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Lead Information</h2>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-wider">
+              {lead.lead_code || `#${lead.id}`}
+            </span>
+            <span className="text-sm font-semibold text-slate-400">•</span>
+            <span className="text-sm font-semibold text-slate-600">{lead.student_name}</span>
+          </div>
         </div>
         <button
           onClick={() => navigate(`/portal/domain/${slug}`)}
-          className="px-4 py-2 text-xs font-black rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors border border-slate-200"
+          className="px-5 py-2.5 text-xs font-bold rounded-xl bg-white text-slate-700 hover:bg-slate-50 transition-all border border-slate-200 shadow-sm flex items-center gap-2"
         >
+          <ChevronRight size={14} className="rotate-180" />
           Back To Domain
         </button>
       </div>
 
-      {/* 2. Message Log (NOW AT THE TOP) */}
-      <div className="space-y-3">
-        <SectionHeader 
-            title="Message Log & Activity" 
-            id="message"
-            currentExpanded={expandedSection}
-            setExpanded={setExpandedSection}
-            icon={MessageSquare}
-            color="text-blue-600"
-        />
-        {expandedSection === 'message' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500 shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-black uppercase text-slate-400">Communication History</p>
-              <button
-                onClick={() => {
-                  fetchRemarkMessages();
-                  fetchDomainStaff();
-                }}
-                className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                title="Refresh Table"
+      {/* 2. Unified Accordion List (FAQ Style) */}
+      <div className="bg-white rounded-2xl border border-slate-200 uppercase overflow-hidden shadow-sm divide-y divide-slate-100">
+        
+        {/* Section: Message Log */}
+        <div className="overflow-hidden uppercase">
+          <SectionHeader 
+              title="Update Remarks & Send Mail" 
+              id="message"
+              currentExpanded={expandedSection}
+              setExpanded={setExpandedSection}
+              icon={MessageSquare}
+              color="text-blue-600"
+          />
+          <AnimatePresence>
+            {expandedSection === 'message' && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] }}
+                className="overflow-hidden"
               >
-                <RefreshCcw size={14} />
-              </button>
-            </div>
+                <div className="p-6 pt-0 space-y-6">
+                  <div className="flex items-center justify-between border-t border-slate-50 pt-5">
+                    <p className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Communication History</p>
+                    <button
+                      onClick={() => {
+                        fetchRemarkMessages();
+                        fetchDomainStaff();
+                      }}
+                      className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                      title="Refresh Table"
+                    >
+                      <RefreshCcw size={14} />
+                    </button>
+                  </div>
 
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
@@ -511,7 +587,7 @@ const LeadDetails = ({ user }) => {
                           ) : <span className="text-slate-300 font-bold">-</span>}
                         </td>
                         <td className="p-3 text-slate-500 font-medium">
-                          {new Date(m.created_at).toLocaleString()}
+                          {formatToLocalDateTime(m.created_at)}
                         </td>
                         <td className="p-3">
                           <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-tighter ${m.sent_status === "SENT" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
@@ -587,9 +663,23 @@ const LeadDetails = ({ user }) => {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Recipient</label>
-                    <input value={lead.email || ""} disabled className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-100 text-slate-500 font-medium" />
+                    <label className="text-[9px] font-black text-slate-400 ml-1">Recipient (Primary)</label>
+                    <input value="bluestoneocs@gmail.com" disabled className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-100 text-slate-500 font-bold" />
                   </div>
+                </div>
+
+                <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                    <button
+                        type="button"
+                        onClick={() => setMessageDraft(prev => ({ ...prev, includeCandidateBCC: !prev.includeCandidateBCC }))}
+                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${messageDraft.includeCandidateBCC ? "bg-blue-500" : "bg-slate-200"}`}
+                    >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${messageDraft.includeCandidateBCC ? "translate-x-5" : "translate-x-1"}`} />
+                    </button>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black uppercase text-slate-700">BCC Candidate</span>
+                        <span className="text-[9px] font-medium text-slate-400 lowercase">{lead.email || "No email available"}</span>
+                    </div>
                 </div>
                 
                 <div className="space-y-1">
@@ -624,14 +714,59 @@ const LeadDetails = ({ user }) => {
                         className="text-[10px] w-full"
                     />
                     {messageDraft.attachment && (
-                        <p className="text-[9px] text-emerald-600 mt-2 font-black uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded inline-block">
+                        <p className="text-[9px] text-red-600 mt-2 font-black uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded inline-block">
                         ✓ ATTACHED: {messageDraft.attachmentName}
                         </p>
                     )}
                 </div>
 
                 <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm">
-                    <p className="bg-slate-50 p-2 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200">Internal Recipients (Staff CC)</p>
+                    <p className="bg-rose-50 p-2 text-[9px] font-black text-rose-600 uppercase tracking-widest border-b border-rose-100 flex items-center gap-2">
+                        <Mail size={10} /> Primary Recipient (Managed List)
+                    </p>
+                    <div className="p-3">
+                        <select
+                            className="w-full p-2.5 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 bg-slate-50 focus:ring-4 ring-rose-500/5 outline-none transition-all cursor-pointer"
+                            value={messageDraft.primarySystemEmailId}
+                            onChange={(e) => setMessageDraft(prev => ({ ...prev, primarySystemEmailId: e.target.value }))}
+                        >
+                            <option value="">Default (bluestoneocs@gmail.com)</option>
+                            {managedEmails.map(m => (
+                                <option key={m.id} value={m.id}>{m.label} ({m.email})</option>
+                            ))}
+                        </select>
+                        <p className="text-[9px] text-slate-400 mt-2 ml-1 font-medium italic">* Selected ID will be set as the main 'To' recipient</p>
+                    </div>
+                </div>
+
+                {managedEmails.length > 0 && (
+                    <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm">
+                        <p className="bg-slate-50 p-2 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 flex items-center gap-2">
+                            <Plus size={10} /> Add Additional System CCs
+                        </p>
+                        <div className="p-2 flex flex-wrap gap-2">
+                            {managedEmails
+                                .filter(m => String(m.id) !== String(messageDraft.primarySystemEmailId))
+                                .map(m => (
+                                <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => toggleSystemRecipient(m.id)}
+                                    className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all flex items-center gap-2 border ${
+                                        (messageDraft.systemRecipientIds || []).includes(m.id)
+                                        ? "bg-slate-800 border-slate-800 text-white shadow-md shadow-slate-200"
+                                        : "bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600"
+                                    }`}
+                                >
+                                    {m.label} {(messageDraft.systemRecipientIds || []).includes(m.id) && "✓"}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm">
+                    <p className="bg-slate-50 p-2 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200">Recipient Selection (Staff/Admins CC)</p>
                     <table className="w-full text-[10px]">
                         <tbody>
                         {domainStaff.length === 0 ? (
@@ -650,7 +785,7 @@ const LeadDetails = ({ user }) => {
                                 </td>
                                 <td className="p-2 font-bold text-slate-700">{s.name}</td>
                                 <td className="p-2 text-slate-500">{s.role}</td>
-                                <td className="p-2 text-slate-400 italic font-medium">{s.email || "-"}</td>
+                                <td className="p-2 text-slate-400 italic font-medium lowercase">{s.email || "-"}</td>
                                 <td className="p-2 text-slate-500">{s.domain || "-"}</td>
                             </tr>
                             ))
@@ -682,130 +817,183 @@ const LeadDetails = ({ user }) => {
               </div>
             )}
           </div>
-        )}
-      </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
 
-      {/* 3. Profile Details (Candidate Info) */}
-      <div className="space-y-3">
-        <SectionHeader 
-          title="Candidate Profile Details" 
-          id="profile"
-          currentExpanded={expandedSection}
-          setExpanded={setExpandedSection}
-          icon={User} 
-          color="text-emerald-600"
-        />
-        {expandedSection === 'profile' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
-            <InfoRow label="Candidate Name" value={lead.student_name || "N/A"} />
-            <InfoRow label="Contact Number" value={lead.phone || "N/A"} />
-            <InfoRow label="Email Address" value={lead.email || "N/A"} />
-            <InfoRow label="Assigned Domain" value={lead.domain || "N/A"} />
-            <InfoRow label="Interested In" value={lead.interested_in || "General Enquiry"} />
-            <InfoRow label="Lead Source" value={lead.source || "Direct / Organic"} />
-            <InfoRow label="Current Status" value={lead.status || "New"} />
-            <div className="col-span-2 h-[1px] bg-slate-100 my-2"></div>
-            <InfoRow label="Assigned Staff" value={lead.assigned_to_name || "Unassigned"} color="text-blue-600" />
-            <InfoRow label="Managed By Staff" value={lead.assigned_by_name || "System Admin"} />
-            <InfoRow label="Created At" value={lead.created_at ? new Date(lead.created_at).toLocaleString() : "N/A"} />
-            <InfoRow label="Latest Activity" value={lead.updated_at ? new Date(lead.updated_at).toLocaleString() : "Sync required"} />
-          </div>
-        )}
-      </div>
-
-      {/* 4. Remarks (Quick Notes) */}
-      <div className="space-y-3">
-        <SectionHeader 
-          title="Quick Remarks & Internal Notes" 
-          id="remarks"
-          currentExpanded={expandedSection}
-          setExpanded={setExpandedSection}
-          icon={PenTool} 
-          color="text-amber-600"
-        />
-        {expandedSection === 'remarks' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
-            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Global System Remarks</p>
-            <textarea
-              value={remarksDraft}
-              onChange={(e) => setRemarksDraft(e.target.value)}
-              className="w-full min-h-[120px] p-4 text-sm border border-slate-200 rounded-xl outline-none focus:ring-4 ring-amber-500/10 transition-all font-medium leading-relaxed bg-slate-50/30"
-              placeholder="Add system-wide remarks here..."
-            />
-            <button
-              onClick={saveRemarks}
-              className="px-6 py-2 text-[10px] font-black rounded-lg bg-slate-800 text-white hover:bg-black transition-all shadow-lg active:scale-95 uppercase tracking-widest"
-            >
-              Update Global Remarks
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* 5. Payments (Fee Details) */}
-      <div className="space-y-3">
-        <SectionHeader 
-          title="Enrollment & Financial Details" 
-          id="payments"
-          currentExpanded={expandedSection}
-          setExpanded={setExpandedSection}
-          icon={CreditCard} 
-          color="text-rose-600"
-        />
-        {expandedSection === 'payments' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
-            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Fee Tracking Console</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Payment Status</label>
-                <select
-                    disabled={!canEditPayments}
-                    value={paymentDraft.payment_status}
-                    onChange={(e) => setPaymentDraft((prev) => ({ ...prev, payment_status: e.target.value }))}
-                    className={`w-full border rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/10" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
-                >
-                    <option value="Paid">✓ FULLY PAID</option>
-                    <option value="Partially Paid">⚡ PARTIALLY PAID</option>
-                    <option value="Unpaid">✕ UNPAID</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Total Course Fee</label>
-                <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    disabled={!canEditPayments}
-                    value={paymentDraft.total_fees}
-                    onChange={(e) => setPaymentDraft((prev) => ({ ...prev, total_fees: e.target.value }))}
-                    className={`w-full border rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/10" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
-                    placeholder="0.00"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Total Paid Amount</label>
-                <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    disabled={!canEditPayments}
-                    value={paymentDraft.paid_amount}
-                    onChange={(e) => setPaymentDraft((prev) => ({ ...prev, paid_amount: e.target.value }))}
-                    className={`w-full border rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/10" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
-                    placeholder="0.00"
-                />
-              </div>
-            </div>
-            {canEditPayments && (
-              <button
-                onClick={savePayment}
-                className="w-full py-3 text-[10px] font-black rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-all shadow-lg shadow-rose-100 active:scale-95 uppercase tracking-widest"
+        {/* Section: Candidate Profile */}
+        <div className="overflow-hidden">
+          <SectionHeader 
+            title="Candidate Profile Details" 
+            id="profile"
+            currentExpanded={expandedSection}
+            setExpanded={setExpandedSection}
+            icon={User} 
+            color="text-red-600"
+          />
+          <AnimatePresence>
+            {expandedSection === 'profile' && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
               >
-                Update Enrollment Financials
-              </button>
+                <div className="p-6 pt-1 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                  <InfoRow label="Name" value={lead.student_name || "N/A"} />
+                  <InfoRow label="Phone" value={lead.phone || "N/A"} />
+                  <InfoRow label="Email" value={lead.email || "N/A"} />
+                  <InfoRow label="Domain" value={lead.domain || "N/A"} />
+                  <InfoRow label="Interest" value={lead.interested_in || "General Enquiry"} />
+                  <InfoRow label="Source" value={lead.source || "Direct / Organic"} />
+                  <InfoRow label="Status" value={lead.status || "New"} />
+                  <InfoRow label="Assigned" value={lead.assigned_to_name || "Unassigned"} />
+                  <InfoRow label="Manager" value={lead.assigned_by_name || "System Admin"} />
+                  <InfoRow label="Created" value={formatToLocalDateTime(lead.created_at)} />
+                  <InfoRow label="Updated" value={formatToLocalDateTime(lead.updated_at)} />
+                </div>
+              </motion.div>
             )}
-          </div>
-        )}
+          </AnimatePresence>
+        </div>
+
+        {/* Section: Remarks */}
+        <div className="overflow-hidden">
+          <SectionHeader 
+            title="Initial Remarks" 
+            id="remarks"
+            currentExpanded={expandedSection}
+            setExpanded={setExpandedSection}
+            icon={PenTool} 
+            color="text-red-600"
+          />
+          <AnimatePresence>
+            {expandedSection === 'remarks' && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <div className="p-8 pt-2 space-y-5">
+                  <p className="text-[10px] font-bold uppercase text-slate-400 tracking-widest mb-1">Finalized System Remarks</p>
+                  <textarea
+                    value={remarksDraft}
+                    onChange={(e) => setRemarksDraft(e.target.value)}
+                    readOnly={!!lead.remarks}
+                    className={`w-full min-h-[140px] p-5 text-sm border-2 rounded-2xl outline-none transition-all font-medium leading-relaxed 
+                      ${!!lead.remarks 
+                        ? "bg-slate-100/50 border-slate-200 text-slate-500 cursor-not-allowed select-none" 
+                        : "bg-slate-50/50 border-slate-100 focus:ring-4 ring-amber-500/10 focus:border-amber-500/20"
+                      }
+                    `}
+                    placeholder={!!lead.remarks ? "No initial remarks set" : "Enter the primary system record for this lead..."}
+                  />
+                  {!lead.remarks && (
+                    <button
+                      onClick={saveRemarks}
+                      className="px-8 py-3 text-[10px] font-bold rounded-xl bg-slate-900 text-white hover:bg-black transition-all shadow-lg active:scale-95 uppercase tracking-widest"
+                    >
+                      Lock & Save Initial Remarks
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Section: Payments */}
+        <div className="overflow-hidden border-b-0!">
+          <SectionHeader 
+            title="Enrollment & Financial Details" 
+            id="payments"
+            currentExpanded={expandedSection}
+            setExpanded={setExpandedSection}
+            icon={CreditCard} 
+            color="text-red-600"
+          />
+          <AnimatePresence>
+            {expandedSection === 'payments' && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <div className="p-8 pt-2 space-y-6">
+                  <p className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Fee Tracking Console</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Payment Status</label>
+                      <select
+                          disabled={!canEditPayments}
+                          value={paymentDraft.payment_status}
+                          onChange={(e) => setPaymentDraft((prev) => ({ ...prev, payment_status: e.target.value }))}
+                          className={`w-full border rounded-xl px-4 py-4 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/5" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
+                      >
+                          {lead.status === "Dropped" ? (
+                            <>
+                              <option value="Partial refund">PARTIAL REFUND</option>
+                              <option value="Fully refund">FULLY REFUND</option>
+                              <option value="No refund">NO REFUND</option>
+                              <option value="Refund pending">REFUND PENDING</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="Advance payment">ADVANCE PAYMENT</option>
+                              <option value="Partial Payment">PARTIAL PAYMENT</option>
+                              <option value="Full payment">FULL PAYMENT</option>
+                              <option value="No Fee">NO FEE</option>
+                              <option value="Pending payment">PENDING PAYMENT</option>
+                            </>
+                          )}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Total Course Fee</label>
+                      <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          disabled={!canEditPayments}
+                          value={paymentDraft.total_fees}
+                          onChange={(e) => setPaymentDraft((prev) => ({ ...prev, total_fees: e.target.value }))}
+                          className={`w-full border rounded-xl px-4 py-4 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/5" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
+                          placeholder="0.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Total Paid Amount</label>
+                      <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          disabled={!canEditPayments}
+                          value={paymentDraft.paid_amount}
+                          onChange={(e) => setPaymentDraft((prev) => ({ ...prev, paid_amount: e.target.value }))}
+                          className={`w-full border rounded-xl px-4 py-4 text-sm font-bold shadow-sm transition-all ${canEditPayments ? "bg-white border-slate-200 hover:border-slate-300 outline-none focus:ring-4 ring-rose-500/5" : "bg-slate-100 text-slate-500 cursor-not-allowed border-transparent"}`}
+                          placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  {canEditPayments && (
+                    <button
+                      onClick={savePayment}
+                      className="w-full py-4 text-[10px] font-bold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-all shadow-lg shadow-rose-100 active:scale-98 uppercase tracking-widest"
+                    >
+                      Update Financial Details
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+            </AnimatePresence>
+        </div>
       </div>
 
       {/* History Modal (Stays external to expansion logic) */}
@@ -857,7 +1045,7 @@ const LeadDetails = ({ user }) => {
                           <p className="text-[10px] text-slate-400 font-medium">{h.edited_by_role || "Staff"}</p>
                         </td>
                         <td className="p-3 text-slate-500 whitespace-nowrap tabular-nums">
-                          {new Date(h.edited_at).toLocaleString()}
+                          {formatToLocalDateTime(h.edited_at)}
                         </td>
                       </tr>
                     ))
@@ -879,9 +1067,9 @@ const LeadDetails = ({ user }) => {
 };
 
 const InfoRow = ({ label, value }) => (
-  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-    <p className="text-[10px] font-black uppercase text-slate-400 mb-1">{label}</p>
-    <p className="text-sm font-semibold text-slate-700 break-words">{value}</p>
+  <div className="p-2 border border-slate-50 rounded-lg hover:bg-slate-50 transition-colors">
+    <p className="text-[8px] font-black uppercase text-slate-400 mb-0.5 tracking-tighter">{label}</p>
+    <p className="text-xs font-bold text-slate-700 truncate" title={value}>{value}</p>
   </div>
 );
 

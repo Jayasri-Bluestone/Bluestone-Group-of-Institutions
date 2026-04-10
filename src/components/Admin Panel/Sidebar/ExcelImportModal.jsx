@@ -106,7 +106,14 @@ const ExcelImportModal = ({ isOpen, onClose, user, domains, onSuccess }) => {
 
       if (res.ok) {
         const result = await res.json();
-        toast.success(`Successfully imported ${result.count} leads`);
+        if (result.skippedCount > 0) {
+          toast.success(`Import complete: ${result.count} added, ${result.skippedCount} skipped (duplicates).`, { 
+            duration: 6000,
+            icon: '⚠️'
+          });
+        } else {
+          toast.success(`Successfully imported ${result.count} leads`);
+        }
         onSuccess?.();
         onClose();
       } else {

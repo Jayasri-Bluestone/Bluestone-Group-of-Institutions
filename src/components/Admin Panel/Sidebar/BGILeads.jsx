@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { formatToLocalDateTime } from '../../../utils/timeUtils';
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { Search, RefreshCcw, History, Edit, X, Eye, Trash2, DeleteIcon, ChevronUp, ChevronDown } from "lucide-react";
@@ -16,8 +17,9 @@ const viewConfig = {
   "lead-status": { apiView: "all", title: "All Confirmed Leads Status", forcedStatus: "Follow Up" },
   "waiting-confirmation": { apiView: "all", title: "Waiting for Confirmation", forcedStatus: "Waiting for Confirmation" },
   pendings: { apiView: "all", title: "Waiting for Confirmation", forcedStatus: "Waiting for Confirmation" },
-  "payment-status": { apiView: "payment", title: "All Payment Status" },
-  "invalid-enquiries": { apiView: "invalid", title: "All Invalid Enquiries", forcedStatus: "Closed" },
+  "payment-status": { apiView: "payment", title: "All Enrolled Status" },
+  "dropped-leads": { apiView: "all", title: "All Dropped Leads", forcedStatus: "Dropped" },
+  "invalid-enquiries": { apiView: "invalid", title: "All Invalid Enquiries", forcedStatus: "Invalid" },
 };
 
 const BGILeads = ({ user }) => {
@@ -224,7 +226,7 @@ const BGILeads = ({ user }) => {
         // Filtering for Waiting Status is done on the client as it's a derived state
         rows = rows.filter((lead) => {
           const st = String(lead.status || "").trim().toLowerCase();
-          const knownNonWaiting = ["new", "follow up", "enrolled", "closed"];
+          const knownNonWaiting = ["new", "follow up", "enrolled", "invalid", "dropped"];
           return st.includes("waiting") || !knownNonWaiting.includes(st);
         });
 
@@ -310,7 +312,7 @@ const BGILeads = ({ user }) => {
         // Pending = all enquiries except Follow Up, Enrolled, and Closed.
         let rows = allRows.filter((lead) => {
           const st = String(lead.status || "").trim().toLowerCase();
-          return st !== "follow up" && st !== "enrolled" && st !== "closed";
+          return st !== "follow up" && st !== "enrolled" && st !== "invalid" && st !== "dropped";
         });
         const q = String(search || "").trim().toLowerCase();
         if (q) {
@@ -362,7 +364,7 @@ const BGILeads = ({ user }) => {
       }
 
       const effectivePaymentStatus =
-        resolvedView.apiView === "payment" && paymentStatus === "Unpaid" ? "All" : paymentStatus;
+        resolvedView.apiView === "payment" && paymentStatus === "Pending payment" ? "All" : paymentStatus;
       const effectiveStatus = resolvedView.forcedStatus || status;
 
       const params = new URLSearchParams();
@@ -415,7 +417,7 @@ const BGILeads = ({ user }) => {
       if (newStatus === "Enrolled") {
         const lead = data.leads.find(l => l.id === leadId);
         const ps = (lead?.payment_status || "").toLowerCase();
-        if (ps === "unpaid" || ps === "") {
+        if (ps === "pending payment" || ps === "") {
           toast.error("Update payment status", { id: tid });
           return;
         }
@@ -738,10 +740,12 @@ const BGILeads = ({ user }) => {
         </select>
 
         <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="border border-slate-200 rounded-lg text-sm px-3 py-2">
-          <option value="All">{resolvedView.apiView === "payment" ? "All (Paid + Partial)" : "All Payment"}</option>
-          <option value="Paid">Paid</option>
-          {resolvedView.apiView !== "payment" && <option value="Unpaid">Unpaid</option>}
-          <option value="Partially Paid">Partially Paid</option>
+          <option value="All">{resolvedView.apiView === "payment" ? "All Enrolled" : "All Payment"}</option>
+          <option value="Advance payment">Advance payment</option>
+          <option value="Partial Payment">Partial Payment</option>
+          <option value="Full payment">Full payment</option>
+          <option value="No Fee">No Fee</option>
+          <option value="Pending payment">Pending payment</option>
         </select>
 
         <select
@@ -882,7 +886,7 @@ const BGILeads = ({ user }) => {
                 <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Interest</th>
                 <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">Remarks</th>
                 <th className="p-2.5 border-r border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">{isStaffTier ? 'Assigned By' : 'Assigned To'}</th>
-                <SortHeader label="Date" sortKey="created_at" className="border-r border-slate-100 !p-2.5 text-[10px]" />
+                <SortHeader label="Date & Time" sortKey="created_at" className="border-r border-slate-100 !p-2.5 text-[10px]" />
                 <SortHeader label="Status" sortKey="status" className="border-r border-slate-100 !p-2.5 text-[10px]" />
                 <th className="p-2.5 text-center text-[10px] font-black text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -909,8 +913,8 @@ const BGILeads = ({ user }) => {
                   <td 
                     className="p-2.5 border-r border-slate-50 min-w-[150px] cursor-pointer"
                   >
-                    <p className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight line-clamp-2 hover:text-blue-600 transition-colors" title={lead.remarks}>
-                      {lead.remarks || "-"}
+                    <p className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight line-clamp-2 hover:text-blue-600 transition-colors" title={lead.latest_remark_subject || lead.remarks}>
+                      {lead.latest_remark_subject || lead.remarks || "-"}
                     </p>
                   </td>
                   <td className="p-2.5 border-r border-slate-50">
@@ -940,8 +944,8 @@ const BGILeads = ({ user }) => {
                       </select>
                     )}
                   </td>
-                  <td className="p-2.5 text-[11px] font-bold text-slate-500 border-r border-slate-50 leading-tight">
-                    {lead.created_at ? new Date(lead.created_at).toLocaleDateString("en-GB") : "-"}
+                  <td className="p-2.5 text-[10px] font-bold text-slate-500 border-r border-slate-50 leading-tight">
+                    {formatToLocalDateTime(lead.created_at)}
                   </td>
                   <td className="p-2.5 text-xs border-r border-slate-50">
                     <div className="flex flex-col gap-1.5">
@@ -954,7 +958,8 @@ const BGILeads = ({ user }) => {
                         <option value="Follow Up">Confirmed Leads</option>
                         <option value="Waiting for Confirmation">Waiting for Confirmation</option>
                         <option value="Enrolled">Enrolled</option>
-                        <option value="Closed">Closed</option>
+                        <option value="Dropped">Dropped</option>
+                        <option value="Invalid">Invalid</option>
                       </select>
                       <p className="text-[10px] text-slate-500 whitespace-normal break-all leading-tight">{lead.email || "-"}</p>
                     </div>
@@ -1047,19 +1052,38 @@ const BGILeads = ({ user }) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase">Category</label>
-                  <input
-                    className="w-full p-2 border rounded-lg text-sm"
+                  <select
+                    className="w-full p-2 border rounded-lg text-sm bg-white"
                     value={selectedLead.category || ""}
-                    onChange={(e) => setSelectedLead({ ...selectedLead, category: e.target.value })}
-                  />
+                    onChange={(e) => setSelectedLead({ ...selectedLead, category: e.target.value, interested_in: "" })}
+                  >
+                    <option value="">Select Category</option>
+                    {(masterData.find(d => {
+                      const dName = (d.name || "").toLowerCase();
+                      const lDom = (selectedLead.domain || "").toLowerCase();
+                      return dName === lDom || dName.includes(lDom) || lDom.includes(dName);
+                    })?.categories || []).map(c => (
+                      <option key={c.id} value={c.category_name}>{c.category_name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase">Interested In</label>
-                  <input
-                    className="w-full p-2 border rounded-lg text-sm"
+                  <select
+                    className="w-full p-2 border rounded-lg text-sm bg-white"
                     value={selectedLead.interested_in || ""}
                     onChange={(e) => setSelectedLead({ ...selectedLead, interested_in: e.target.value })}
-                  />
+                  >
+                    <option value="">Select Interest</option>
+                    {(masterData.find(d => {
+                      const dName = (d.name || "").toLowerCase();
+                      const lDom = (selectedLead.domain || "").toLowerCase();
+                      return dName === lDom || dName.includes(lDom) || lDom.includes(dName);
+                    })?.categories?.find(c => c.category_name === selectedLead.category)
+                      ?.values || []).map(v => (
+                        <option key={v.id} value={v.sub_value}>{v.sub_value}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div>
@@ -1140,7 +1164,9 @@ const getStatusStyle = (status) => {
       return "bg-amber-100 text-amber-700";
     case "Enrolled":
       return "bg-green-100 text-green-700";
-    case "Closed":
+    case "Dropped":
+      return "bg-slate-200 text-slate-700";
+    case "Invalid":
       return "bg-red-100 text-red-700";
     default:
       return "bg-slate-100 text-slate-700";

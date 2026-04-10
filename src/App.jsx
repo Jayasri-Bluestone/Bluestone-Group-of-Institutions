@@ -56,6 +56,8 @@ import Profile from './components/Admin Panel/Sidebar/Profile';
 import UserEfficiency from './components/Admin Panel/Sidebar/UserEfficiency';
 import DeletedLeads from './components/Admin Panel/Sidebar/DeletedLeads';
 
+import { RequireAuth, RequireTier, RequireStaffWithMultipleDomains } from './components/RequireAuth';
+
 import { API_BASE_URL, API_BASE_URL_PORTAL } from './apiConfig';
 
 function ScrollToTop() {
@@ -275,16 +277,7 @@ export default function App() {
 
         {/* --- 2. AUTHENTICATION PAGES --- */}
         <Route path="/admin-login" element={<AdminLogin onLoginSuccess={handleLogin} />} />
-        <Route
-          path="/portal"
-          element={
-            !auth.isAuthenticated ? (
-              <LoginPage onLoginSuccess={handleLogin} />
-            ) : (
-              <Navigate to="/portal/dashboard" replace />
-            )
-          }
-        />
+
 
         {/* --- 3. ADMIN CMS ROUTES (/admin) --- */}
         {auth.isAuthenticated ? (
@@ -303,56 +296,58 @@ export default function App() {
         )}
 
         {/* --- 4. PORTAL CRM ROUTES (/portal/*) --- */}
-        {auth.isAuthenticated ? (
-          <Route path="/portal" element={<Layout user={auth.user} onLogout={handleLogout} />}>
-            <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard user={auth.user} />} />
-            <Route
-              path="profile"
-              element={
-                <Profile
-                  user={auth.user}
-                  onUpdateUser={(u) => setAuth({ isAuthenticated: true, user: u })}
-                />
-              }
-            />
-            <Route path="domain/:slug" element={<DomainResolver user={auth.user} />} />
-            <Route path="domain/:slug/lead/:leadId" element={<LeadDetailsResolver user={auth.user} />} />
-            {/* BGI route: Super Admin, Admin, or Staff with multiple domains */}
-            {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN' ||
-              (getTier(auth.user) === 'STAFF' && (auth.user?.domain || '').split(',').filter(Boolean).length > 1)) && (
+        <Route path="/portal">
+          {/* Public Portal Route (Login) */}
+          <Route
+            index
+            element={
+              !auth.isAuthenticated ? (
+                <LoginPage onLoginSuccess={handleLogin} />
+              ) : (
+                <Navigate to="/portal/dashboard" replace />
+              )
+            }
+          />
+
+          {/* Protected Portal Routes */}
+          <Route element={<RequireAuth isAuthenticated={auth.isAuthenticated} />}>
+            <Route element={<Layout user={auth.user} onLogout={handleLogout} onUpdateUser={(u) => setAuth({ isAuthenticated: true, user: u })} />}>
+              <Route path="dashboard" element={<Dashboard user={auth.user} />} />
+              <Route path="profile" element={<Profile user={auth.user} onUpdateUser={(u) => setAuth({ isAuthenticated: true, user: u })} />} />
+              <Route path="domain/:slug" element={<DomainResolver user={auth.user} />} />
+              <Route path="domain/:slug/lead/:leadId" element={<LeadDetailsResolver user={auth.user} />} />
+              <Route path="live-feed-calendar" element={<LiveFeedCalendar user={auth.user} />} />
+
+              {/* BGI Group Restricted Route */}
+              <Route element={<RequireStaffWithMultipleDomains user={auth.user} />}>
                 <Route path="bgi/:view" element={<BGILeads user={auth.user} />} />
-              )}
+              </Route>
 
-            {/* Role Restricted Portal Routes */}
-            {(getTier(auth.user) === 'SUPER_ADMIN' || getTier(auth.user) === 'ADMIN') && (
-              <Route path="live-feed" element={<LiveFeedManager user={auth.user} />} />
-            )}
-
-            {/* Calendar View accessible by all authenticated portal users */}
-            <Route path="live-feed-calendar" element={<LiveFeedCalendar user={auth.user} />} />
-
-            {getTier(auth.user) === 'SUPER_ADMIN' && (
-              <>
-                <Route path="user-management" element={<UserManagement user={auth.user} />} />
+              {/* Admin/SuperAdmin Restricted Routes */}
+              <Route element={<RequireTier user={auth.user} allowedTiers={['ADMIN', 'SUPER_ADMIN']} />}>
+                <Route path="live-feed" element={<LiveFeedManager user={auth.user} />} />
                 <Route path="master" element={<MasterManagement user={auth.user} />} />
+              </Route>
+
+              {/* SuperAdmin ONLY Routes */}
+              <Route element={<RequireTier user={auth.user} allowedTiers={['SUPER_ADMIN']} />}>
+                <Route path="user-management" element={<UserManagement user={auth.user} />} />
                 <Route path="efficiency" element={<UserEfficiency user={auth.user} />} />
                 <Route path="deleted-enquiries" element={<DeletedLeads user={auth.user} />} />
-              </>
-            )}
-            {getTier(auth.user) === 'ADMIN' && (
-              <>
-                <Route path="master" element={<MasterManagement user={auth.user} />} />
-                <Route path="user-management" element={<Navigate to="/portal/master" replace />} />
-              </>
-            )}
-            <Route path="*" element={<Navigate to="dashboard" replace />} />
-          </Route>
-        ) : (
-          <Route path="/portal/*" element={<Navigate to="/portal" replace />} />
-        )}
+              </Route>
 
-        {/* 404 Catch-all */}
+              {/* Admin specific redirect */}
+              <Route element={<RequireTier user={auth.user} allowedTiers={['ADMIN']} />}>
+                <Route path="user-management" element={<Navigate to="/portal/master" replace />} />
+              </Route>
+
+              {/* Catch-all WITHIN portal layout */}
+              <Route path="*" element={<Navigate to="/portal/dashboard" replace />} />
+            </Route>
+          </Route>
+        </Route>
+
+        {/* Global 404 Catch-all */}
         <Route path="*" element={<Navigate to="/portal" replace />} />
       </Routes>
     </Router>

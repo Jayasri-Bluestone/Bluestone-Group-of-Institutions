@@ -10,6 +10,7 @@ import { confirmToast } from "../../../utils/toastConfirm";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import MultiDomainDropdown from "./MultiSelectDD";
 import { exportToExcel } from "../../../utils/exportExcel";
+import { formatToLocalDateTime } from "../../../utils/timeUtils";
 import { RiDeleteBin4Fill } from "react-icons/ri";
 import { BiExport } from "react-icons/bi";
 
@@ -864,7 +865,7 @@ const UserManagement = ({ user }) => {
                 <div key={i} className="border-l-4 border-blue-500 pl-4 py-1 bg-slate-50/50 p-3 rounded-r-xl">
                   <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase mb-2">
                     <span className="text-blue-600">{h.action_type || 'UPDATE'} by: {h.changed_by}</span>
-                    <span>{new Date(h.changed_at).toLocaleString()}</span>
+                    <span>{formatToLocalDateTime(h.changed_at)}</span>
                   </div>
                   <p className="text-[10px] text-slate-400 font-black uppercase mb-1">{h.field_name || 'details'}</p>
                   <p className="text-sm text-slate-700 leading-relaxed font-medium"><span className="text-slate-400">From:</span> {h.old_value || '-'}</p>

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { API_BASE_URL } from '../../apiConfig';
 import { confirmToast } from '../../utils/toastConfirm';
 import { exportToExcel } from '../../utils/exportExcel';
+import { parseAsIST } from '../../utils/timeUtils';
 
 
 export function AdminLeads() {
@@ -24,7 +25,7 @@ export function AdminLeads() {
 
   const formatDateTime = (dateString) => {
     if (!dateString) return { date: "N/A", time: "" };
-    const date = new Date(dateString);
+    const date = parseAsIST(dateString);
     return {
       date: date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       time: date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
