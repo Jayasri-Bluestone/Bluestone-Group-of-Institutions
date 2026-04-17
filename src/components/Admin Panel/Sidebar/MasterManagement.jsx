@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
-import { Plus, Trash2, Database, CheckCircle, Edit3, X, Save, LayoutGrid, Users, Network, ChevronUp, ChevronDown, Mail } from 'lucide-react';
+import { Plus, Trash2, Database, CheckCircle, Edit3, X, Save, LayoutGrid, Users, Network, ChevronUp, ChevronDown, Mail, FileText } from 'lucide-react';
 import * as Fa6Icons from 'react-icons/fa6';
 import * as MdIcons from 'react-icons/md';
 import * as IoIcons from 'react-icons/io5';
@@ -151,6 +151,12 @@ const MasterManagement = ({ user }) => {
     icon_name: DEFAULT_ICON_KEY,
     logo_url: '',
   });
+
+  // Document Requirements States
+  const [docsModal, setDocsModal] = useState({ isOpen: false, level: '', parentId: '', parentName: '' });
+  const [docRequirements, setDocRequirements] = useState([]);
+  const [newDocName, setNewDocName] = useState('');
+  const [isMandatory, setIsMandatory] = useState(true);
 
   const allIconOptions = useMemo(() => {
     return Object.entries(ICON_PACKS).flatMap(([pack, icons]) =>
@@ -683,6 +689,64 @@ const MasterManagement = ({ user }) => {
     }
   };
 
+  // --- DOCUMENT REQUIREMENT ACTIONS ---
+  const fetchDocRequirements = async (level, parentId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents/${level}/${parentId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) setDocRequirements(await res.json());
+    } catch { toast.error("Failed to fetch requirements"); }
+  };
+
+  const openDocsModal = (level, parentId, parentName) => {
+    setDocsModal({ isOpen: true, level, parentId, parentName });
+    fetchDocRequirements(level, parentId);
+  };
+
+  const closeDocsModal = () => {
+    setDocsModal({ isOpen: false, level: '', parentId: '', parentName: '' });
+    setDocRequirements([]);
+    setNewDocName('');
+  };
+
+  const addDocRequirement = async () => {
+    if (!newDocName.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          level: docsModal.level,
+          parentId: docsModal.parentId,
+          documentName: newDocName.trim(),
+          isMandatory
+        })
+      });
+      if (res.ok) {
+        toast.success("Requirement added");
+        setNewDocName('');
+        fetchDocRequirements(docsModal.level, docsModal.parentId);
+      }
+    } catch { toast.error("Failed to add requirement"); }
+  };
+
+  const deleteDocRequirement = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        toast.success("Deleted");
+        fetchDocRequirements(docsModal.level, docsModal.parentId);
+      }
+    } catch { toast.error("Failed to delete"); }
+  };
+
   const handleEditLogoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -916,7 +980,7 @@ const MasterManagement = ({ user }) => {
               <span>Live Master Structure</span>
               <span className="text-slate-400">MD/GM Access Only</span>
             </div>
-            <div>
+            <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b">
                   <tr>
@@ -989,6 +1053,15 @@ const MasterManagement = ({ user }) => {
                                 disabled={!selectedCategory}
                               >
                                 <Trash2 size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => selectedCategory && openDocsModal('category', selectedCategory.id, selectedCategory.category_name)}
+                                className="p-2 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100"
+                                title="Manage Category Documents"
+                                disabled={!selectedCategory}
+                              >
+                                <FileText size={12} />
                               </button>
                             </div>
                             {editingItem.type === 'categories' && editingItem.id === selectedCatId && (
@@ -1090,6 +1163,15 @@ const MasterManagement = ({ user }) => {
                               >
                                 <Trash2 size={12} />
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => selectedValue && openDocsModal('value', selectedValue.id, selectedValue.sub_value)}
+                                className="p-2 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100"
+                                title="Manage Value Documents"
+                                disabled={!selectedValue}
+                              >
+                                <FileText size={12} />
+                              </button>
                             </div>
                             {editingItem.type === 'values' && editingItem.id === selectedValueId && (
                               <div className="flex gap-2">
@@ -1160,6 +1242,14 @@ const MasterManagement = ({ user }) => {
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openDocsModal('domain', domain.id, domain.name)}
+                              className="p-2 rounded-lg bg-amber-50 text-amber-600 border border-amber-100"
+                              title="Manage Domain Documents"
+                            >
+                              <FileText size={14} />
+                            </button>
                             <button
                               type="button"
                               onClick={() => openDomainEditModal(domain)}
@@ -1629,6 +1719,99 @@ const MasterManagement = ({ user }) => {
                 className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg"
               >
                 Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- DOCUMENT REQUIREMENTS MODAL --- */}
+      {docsModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b flex items-center justify-between bg-slate-900 text-white">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <FileText size={20} className="text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm uppercase tracking-wider">Required Documents</h3>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-widest">{docsModal.level}: {docsModal.parentName}</p>
+                </div>
+              </div>
+              <button onClick={closeDocsModal} className="hover:bg-white/10 p-2 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Add New Section */}
+              <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Add New Requirement</label>
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    className="flex-1 p-3 border rounded-xl bg-white text-sm shadow-sm focus:ring-2 focus:ring-slate-900 outline-none transition-all"
+                    placeholder="e.g. Passport Copy"
+                    value={newDocName}
+                    onChange={(e) => setNewDocName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addDocRequirement()}
+                  />
+                  <div className="flex flex-col gap-1 items-center justify-center px-3 border rounded-xl bg-white">
+                    <span className="text-[8px] font-black uppercase text-slate-400">Mandatory</span>
+                    <input
+                      type="checkbox"
+                      checked={isMandatory}
+                      onChange={(e) => setIsMandatory(e.target.checked)}
+                      className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900"
+                    />
+                  </div>
+                  <button
+                    onClick={addDocRequirement}
+                    className="bg-slate-900 text-white px-4 rounded-xl hover:bg-black transition-all shadow-lg shadow-slate-200"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* List Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Existing Requirements ({docRequirements.length})</span>
+                </div>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  {docRequirements.length === 0 ? (
+                    <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                      <p className="text-xs text-slate-400 italic">No document requirements defined yet.</p>
+                    </div>
+                  ) : (
+                    docRequirements.map((req) => (
+                      <div key={req.id} className="group flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-300 transition-all shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full ${req.is_mandatory ? 'bg-rose-500' : 'bg-slate-300'}`} title={req.is_mandatory ? "Mandatory" : "Optional"} />
+                          <span className="text-sm font-bold text-slate-700">{req.document_name}</span>
+                          {!req.is_mandatory && <span className="text-[9px] font-black text-slate-300 uppercase leading-none mt-0.5">Optional</span>}
+                        </div>
+                        <button
+                          onClick={() => deleteDocRequirement(req.id)}
+                          className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t flex justify-end">
+              <button
+                onClick={closeDocsModal}
+                className="px-6 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
+              >
+                Close
               </button>
             </div>
           </div>

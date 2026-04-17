@@ -127,10 +127,10 @@ const UserEfficiency = ({ user }) => {
   const getUserStatus = (lastActiveAt, iactive, secondsAgo) => {
     // 1. Priority: Server-provided relative 'secondsAgo' (drift-immune)
     if (secondsAgo !== undefined && secondsAgo !== null) {
-      if (secondsAgo <= 65) { 
-         return { label: 'ONLINE', color: 'emerald', isOnline: true };
+      if (secondsAgo <= 65) {
+        return { label: 'ONLINE', color: 'emerald', isOnline: true };
       }
-      
+
       // 2. Secondary: If backend explicitly says iactive=1, user is definitely online
       // (Used as a fallback if the window has passed but the heartbeat just finished)
       if (iactive === 1 && secondsAgo <= 120) {
@@ -322,11 +322,11 @@ const UserEfficiency = ({ user }) => {
     if (timeRange === 'week') {
       const date = parseAsIST(val);
       if (isNaN(date.getTime())) return val;
-      return date.toLocaleDateString('en-GB', { 
-        weekday: 'long', 
-        day: '2-digit', 
+      return date.toLocaleDateString('en-GB', {
+        weekday: 'long',
+        day: '2-digit',
         month: '2-digit',
-        year: 'numeric' 
+        year: 'numeric'
       }).replace(',', '');
     }
 
@@ -335,9 +335,9 @@ const UserEfficiency = ({ user }) => {
       try {
         const [year, month] = val.split('-');
         const date = parseAsIST(`${year}-${month}-01`);
-        return date.toLocaleDateString('en-US', { 
-          month: 'short', 
-          year: 'numeric' 
+        return date.toLocaleDateString('en-US', {
+          month: 'short',
+          year: 'numeric'
         });
       } catch (e) {
         return val;
@@ -368,7 +368,7 @@ const UserEfficiency = ({ user }) => {
                 {dataPoint.userCount} <span className="text-[10px] text-slate-400">STAFF</span>
               </span>
             </div>
-            
+
             {dataPoint.activeUsers && dataPoint.activeUsers.length > 0 && (
               <div className="pt-2 border-t border-slate-100">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Staff Online:</p>
@@ -700,7 +700,7 @@ const UserEfficiency = ({ user }) => {
                     </button>
                   </div>
 
-                  <div className="overflow-hidden border border-slate-100 rounded-[2rem] bg-white">
+                  <div className="overflow-x-auto border border-slate-100 rounded-[2rem] bg-white">
                     <table className="w-full text-left">
                       <thead className="bg-slate-50">
                         <tr>
@@ -740,7 +740,7 @@ const UserEfficiency = ({ user }) => {
                                     </div>
                                     {!status.isOnline && (
                                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
-                                        Seen {status.label} 
+                                        Seen {status.label}
                                         {u.last_active_at && ` (${formatToLocalDateTime(u.last_active_at).split(' ')[1]} ${formatToLocalDateTime(u.last_active_at).split(' ')[2]})`}
                                       </span>
                                     )}
@@ -855,14 +855,14 @@ const UserEfficiency = ({ user }) => {
             ) : (
               <div className="h-[400px] w-full relative z-10">
                 <ResponsiveContainer width="100%" height={400} minWidth={0} debounce={1}>
-                  <AreaChart 
+                  <AreaChart
                     data={
-                      timeRange === 'day' 
+                      timeRange === 'day'
                         ? (hourlyData || []).filter(d => d.hour >= 9 && d.hour <= 17)
                         : (individualChartData || []).map(d => {
-                            const val = d[selectedUser.name] || d[selectedUser.userName] || 0;
-                            return { ...d, value: val, total: val };
-                          })
+                          const val = d[selectedUser.name] || d[selectedUser.userName] || 0;
+                          return { ...d, value: val, total: val };
+                        })
                     }
                   >
                     <defs>
@@ -887,9 +887,9 @@ const UserEfficiency = ({ user }) => {
                       domain={timeRange === 'day' ? [0, 60] : ['auto', 'auto']}
                       tickFormatter={(val) => timeRange === 'day' ? val : (val / 60).toFixed(0)}
                     />
-                    <Tooltip 
-                      content={timeRange === 'day' ? <HourlyTooltip /> : <CustomTooltip />} 
-                      cursor={{ stroke: 'rgba(59, 130, 246, 0.2)', strokeWidth: 40 }} 
+                    <Tooltip
+                      content={timeRange === 'day' ? <HourlyTooltip /> : <CustomTooltip />}
+                      cursor={{ stroke: 'rgba(59, 130, 246, 0.2)', strokeWidth: 40 }}
                     />
                     <Area
                       type="monotone"

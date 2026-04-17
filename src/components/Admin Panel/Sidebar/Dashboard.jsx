@@ -1015,7 +1015,7 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
 
             {/* Table Body */}
             <div
-                className={`flex-grow min-h-[350px] ${enableVerticalScroll ? 'max-h-[350px] overflow-y-auto' : ''}`}
+                className={`flex-grow min-h-[350px] overflow-x-auto ${enableVerticalScroll ? 'max-h-[450px] overflow-y-auto' : ''}`}
             >
                 <table className="w-full border-collapse">
                     <thead>
@@ -1038,20 +1038,19 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
                             >
                                 {/* Name Cell */}
                                 <td className="py-3 px-4">
-                                    <p className="font-bold text-slate-800 text-sm whitespace-normal break-words">{lead.student_name}</p>
+                                    <p className="font-bold text-slate-800 text-[11.5px] whitespace-normal break-words">{lead.student_name}</p>
                                     <p className="text-[8px] text-red-600 font-bold uppercase leading-tight mt-0.5 whitespace-normal break-words">{lead.domain}</p>
                                     <p className="text-[8px] text-slate-400 font-bold uppercase leading-none mt-1">{lead.lead_code || `#${lead.id}`}</p>
                                 </td>
 
                                 {/* Email & Phone Cell */}
                                 <td className="py-3 px-4">
-
                                     <div className="flex flex-col gap-0.5">
                                         <div className="flex items-center gap-1.5 text-slate-500">
-                                            <span className="text-[11px] font-medium whitespace-normal break-all">{lead.email || '—'}</span>
+                                            <span className="text-[10px] font-medium whitespace-normal break-all">{lead.email || '—'}</span>
                                         </div>
                                         <div className="flex items-center gap-1.5 text-slate-700">
-                                            <span className="text-[11px] font-bold">{lead.phone}</span>
+                                            <span className="text-[10px] font-bold">{lead.phone}</span>
                                         </div>
                                     </div>
                                 </td>
@@ -1064,7 +1063,10 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
                                 </td>
                                 {showRemarks && (
                                     <td className="py-2 px-3">
-                                        <p className="text-[11.5px] text-slate-600 font-medium whitespace-normal break-words min-w-[100px] leading-tight">
+                                        <p
+                                            className="text-[10px] text-slate-600 font-medium whitespace-normal break-words min-w-[100px] leading-tight line-clamp-2"
+                                            title={lead.remarks}
+                                        >
                                             {lead.remarks || '-'}
                                         </p>
                                     </td>
@@ -1075,7 +1077,7 @@ const LeadList = ({ title, data, icon, color, badgeColor, currentPage, setCurren
                                     <p className="text-[9.5px] text-slate-400 font-bold uppercase leading-tight">
                                         {userTier === 'STAFF' ? 'From' : 'To'}
                                     </p>
-                                    <p className="text-[11px] text-slate-600 font-black whitespace-normal break-words ml-auto max-w-[100px] leading-tight">
+                                    <p className="text-[10px] text-slate-600 font-black whitespace-normal break-words ml-auto max-w-[100px] leading-tight">
                                         {userTier === 'STAFF' ? (lead.assigned_by_name || 'System') : (lead.assigned_to_name || 'Unassigned')}
                                     </p>
                                 </td>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { RefreshCcw, ChevronUp, Plus, ChevronDown, MessageSquare, User, PenTool, CreditCard, ChevronRight, Mail } from "lucide-react";
+import { RefreshCcw, ChevronUp, Plus, ChevronDown, MessageSquare, User, PenTool, CreditCard, ChevronRight, Mail, FileText, UploadCloud, CheckCircle2, XCircle, Clock, Eye, Trash2, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import LoadingScreen from "../Layout/LoadingScreen";
 import { formatToLocalDateTime, parseAsIST } from "../../../utils/timeUtils";
@@ -994,6 +994,31 @@ const LeadDetails = ({ user }) => {
             )}
             </AnimatePresence>
         </div>
+
+        {/* Section: Documents */}
+        <div className="overflow-hidden">
+          <SectionHeader 
+            title="Candidate Document Management" 
+            id="documents"
+            currentExpanded={expandedSection}
+            setExpanded={setExpandedSection}
+            icon={FileText} 
+            color="text-emerald-600"
+          />
+          <AnimatePresence>
+            {expandedSection === 'documents' && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <DocumentManager leadId={leadId} isAdminTier={isAdminTier} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* History Modal (Stays external to expansion logic) */}
@@ -1072,5 +1097,283 @@ const InfoRow = ({ label, value }) => (
     <p className="text-xs font-bold text-slate-700 truncate" title={value}>{value}</p>
   </div>
 );
+
+const DocRow = ({ req, upload, onUpload, onDelete, onCheck, uploading, isAdminTier }) => {
+  const statusColors = {
+    'Pending': 'bg-slate-100 text-slate-500',
+    'Collected': 'bg-amber-100 text-amber-600',
+    'Uploaded': 'bg-blue-100 text-blue-600',
+    'Verified': 'bg-emerald-100 text-emerald-600',
+    'Rejected': 'bg-rose-100 text-rose-600'
+  };
+
+  const handleDownload = async (path, filename) => {
+    try {
+      const response = await fetch(`${API_BASE_URL_PORTAL}/${path}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "document";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error("Failed to download file");
+    }
+  };
+
+  return (
+    <tr className="border-t border-slate-100 hover:bg-slate-50/50 transition-colors">
+      <td className="p-4">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg ${upload ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}`}>
+            <FileText size={16} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-slate-700 truncate">{req.document_name}</p>
+            <p className="text-[9px] text-slate-400 uppercase tracking-tighter font-bold">{req.level} Requirement</p>
+          </div>
+        </div>
+      </td>
+      <td className="p-4 text-center">
+        {req.id && (
+          <input 
+            type="checkbox"
+            checked={!!upload}
+            onChange={() => !uploading && onCheck(req.id, req.document_name)}
+            className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer transition-all hover:scale-110"
+            title="Mark as Received/Collected"
+            disabled={uploading || (upload && upload.status !== 'Collected')}
+          />
+        )}
+      </td>
+      <td className="p-4">
+        {req.is_mandatory ? (
+          <span className="text-[8px] font-black uppercase bg-rose-50 text-rose-500 px-1.5 py-0.5 rounded border border-rose-100">Mandatory</span>
+        ) : (
+          <span className="text-[8px] font-black uppercase bg-slate-50 text-slate-400 px-1.5 py-0.5 rounded border border-slate-100">Optional</span>
+        )}
+      </td>
+      <td className="p-4">
+        <div className={`inline-flex px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${statusColors[upload?.status || 'Pending']}`}>
+          {upload?.status || 'Pending'}
+        </div>
+      </td>
+      <td className="p-4">
+        <div className="flex items-center gap-2">
+          {!upload ? (
+            <label className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all ${uploading ? 'bg-slate-100 text-slate-400' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'}`}>
+              <UploadCloud size={12} />
+              {uploading ? 'UP...' : 'Upload'}
+              <input 
+                type="file" 
+                className="hidden" 
+                disabled={uploading} 
+                accept="application/pdf,image/*" 
+                onChange={(e) => onUpload(e, req.id, req.document_name)} 
+              />
+            </label>
+          ) : (
+            <>
+              <button 
+                onClick={() => window.open(`${API_BASE_URL_PORTAL}/${upload.file_path}`, '_blank')}
+                className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all font-bold"
+                title="View"
+              >
+                <Eye size={12} />
+              </button>
+
+              <button 
+                onClick={() => handleDownload(upload.file_path, `${req.document_name}_${upload.id}`)}
+                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all"
+                title="Download"
+              >
+                <Download size={12} />
+              </button>
+              
+              {isAdminTier && (
+                <button 
+                  onClick={() => onDelete(upload.id)}
+                  className="p-1.5 rounded-lg bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"
+                  title="Delete"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+};
+
+const DocumentManager = ({ leadId, isAdminTier }) => {
+  const [data, setData] = useState({ requirements: [], uploads: [] });
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(null);
+
+  const fetchDocs = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/document-requirements`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (res.ok) setData(await res.json());
+    } catch { toast.error("Failed to load documents"); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchDocs(); }, [leadId]);
+
+  const toggleChecklist = async (requirementId, docName) => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/documents/checklist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        },
+        body: JSON.stringify({ requirementId, documentName })
+      });
+      if (res.ok) {
+        toast.success("Checklist updated");
+        fetchDocs();
+      }
+    } catch { toast.error("Error updating checklist"); }
+  };
+
+  const handleUpload = async (e, requirementId, docName) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Client-side validation
+    const maxSizeBytes = 1024 * 1024; // 1 MB
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+
+    if (file.size > maxSizeBytes) {
+      toast.error("File size exceeds 1 MB limit");
+      return;
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Invalid file type. Only PDF and images are allowed.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("documentName", docName);
+    if (requirementId) formData.append("requirementId", requirementId);
+
+    setUploading(requirementId || docName);
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/documents/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: formData
+      });
+      if (res.ok) {
+        toast.success("Uploaded successfully");
+        fetchDocs();
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.msg || "Upload failed");
+      }
+    } catch { toast.error("Error uploading file"); }
+    finally { setUploading(null); }
+  };
+
+  const updateStatus = async (docId, status) => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/documents/${docId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        toast.success(`Status updated to ${status}`);
+        fetchDocs();
+      }
+    } catch { toast.error("Failed to update status"); }
+  };
+
+  const deleteDoc = async (docId) => {
+    if (!(await confirmToast("Delete this document?"))) return;
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/documents/${docId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+      });
+      if (res.ok) {
+        toast.success("Deleted");
+        fetchDocs();
+      }
+    } catch { toast.error("Delete failed"); }
+  };
+
+  if (loading) return <div className="p-10 text-center text-xs text-slate-400 uppercase font-black tracking-widest animate-pulse">Checking checklist...</div>;
+
+  const extraUploads = data.uploads.filter(u => !u.requirement_id);
+
+  return (
+    <div className="p-6 pt-0">
+      <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr className="text-[10px] uppercase text-slate-500 font-black">
+              <th className="p-4">Document Details</th>
+              <th className="p-4 text-center">Handed Over</th>
+              <th className="p-4">Type</th>
+              <th className="p-4 text-center">Status</th>
+              <th className="p-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {data.requirements.map(req => {
+              const upload = data.uploads.find(u => u.requirement_id === req.id);
+              return (
+                <DocRow 
+                  key={req.id} 
+                  req={req} 
+                  upload={upload} 
+                  onUpload={handleUpload}
+                  onDelete={deleteDoc}
+                  onCheck={toggleChecklist}
+                  uploading={uploading === req.id}
+                  isAdminTier={isAdminTier}
+                />
+              );
+            })}
+
+            {extraUploads.map(u => (
+              <DocRow 
+                key={u.id} 
+                req={{ document_name: u.document_name, is_mandatory: 0, level: 'Ad-hoc' }} 
+                upload={u} 
+                onUpload={handleUpload}
+                onDelete={deleteDoc}
+                onCheck={() => {}} // No checklist for ad-hoc? Or handle same?
+                isAdminTier={isAdminTier}
+              />
+            ))}
+          </tbody>
+        </table>
+
+        {data.requirements.length === 0 && extraUploads.length === 0 && (
+          <div className="text-center py-16 bg-white italic">
+            <FileText className="mx-auto mb-3 text-slate-200" size={40} />
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">No Documents Found</p>
+            <p className="text-[9px] text-slate-300">Requirements are pulled from Master Management settings.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default LeadDetails;

@@ -772,7 +772,7 @@ const UserManagement = ({ user }) => {
         </div>
 
 
-        <div className={`min-h-[400px] ${enableTableScroll ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
+        <div className={`overflow-x-auto min-h-[400px] ${enableTableScroll ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b">
               <tr>

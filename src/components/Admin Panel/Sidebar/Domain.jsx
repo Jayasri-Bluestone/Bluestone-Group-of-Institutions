@@ -491,9 +491,12 @@ const DomainPage = ({ domain, user }) => {
         const leadStatus = String(lead.status || '').trim().toLowerCase();
         const leadPayment = String(lead.payment_status || '').trim().toLowerCase();
         const matchesSearch =
-            lead.student_name.toLowerCase().includes(q) ||
-            lead.phone.includes(searchTerm) ||
-            (lead.email || '').toLowerCase().includes(q);
+            (lead.student_name || '').toLowerCase().includes(q) ||
+            (lead.phone || '').includes(searchTerm) ||
+            (lead.email || '').toLowerCase().includes(q) ||
+            (lead.lead_code || '').toLowerCase().includes(q) ||
+            (lead.remarks || '').toLowerCase().includes(q) ||
+            (lead.source || '').toLowerCase().includes(q);
         const matchesAssigned =
             assignedTo === 'All' || String(lead.assigned_to) === String(assignedTo);
         const normalizedStatusFilter = String(statusFilter || 'All').trim().toLowerCase();
@@ -873,7 +876,7 @@ const DomainPage = ({ domain, user }) => {
                 </div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className={`${filteredLeads.length > 10 ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
+                <div className={`overflow-x-auto ${filteredLeads.length > 10 ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
                     <table className="w-full text-left text-sm border-collapse">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">

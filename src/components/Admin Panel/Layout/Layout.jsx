@@ -75,7 +75,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const [menuRefreshNonce, setMenuRefreshNonce] = useState(0);
   const sessionExpiredRef = useRef(false);
   const lastInteractionRef = useRef(0);
-  const INTERACTION_THROTTLE_MS = 600000; // 10 minutes
+  const INTERACTION_THROTTLE_MS = 60000; // 1 minute (matching inactivity swiper)
   const SESSION_CHECK_MS = 60000;
   // Data States
   const [masterData, setMasterData] = useState([]);
@@ -107,7 +107,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const trackInteraction = async () => {
     const now = Date.now();
     if (now - lastInteractionRef.current < INTERACTION_THROTTLE_MS) return;
-    
+
     lastInteractionRef.current = now;
     try {
       await fetch(`${API_BASE_URL_PORTAL}/api/user/heartbeat`, {
@@ -426,7 +426,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     if (!lead?.id) return;
     const slug = getSlug(leadDomain);
     const status = String(lead.status || '').trim().toLowerCase();
-    
+
     // Determine the default view based on status
     let viewQuery = '?view=all';
     if (status === 'follow up') viewQuery = '?view=lead-status';
@@ -438,7 +438,7 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
     }
 
     navigate(`/portal/domain/${slug}${viewQuery}`, {
-      state: { 
+      state: {
         focusLeadId: lead.id,
         focusLeadCode: lead.lead_code || lead.id // Use ID as fallback for code
       },
@@ -509,21 +509,21 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
   const isUserDomain = (domainName = '') => {
     if (!domainName) return false;
     const lower = domainName.toLowerCase();
-    
+
     // Exact match or contains (e.g. "IAS Academy" matches "IAS")
     return userDomainsList.some(ud => {
       if (!ud) return false;
       const udLower = ud.toLowerCase();
-      
+
       // Basic check
       if (lower === udLower || udLower.includes(lower) || lower.includes(udLower)) return true;
-      
+
       // Cleanup prefixes for more robust matching
       const cleanLower = lower.replace(/^(bluestone|bgoi)\s+/i, '').trim();
       const cleanUd = udLower.replace(/^(bluestone|bgoi)\s+/i, '').trim();
-      
+
       if (cleanLower === cleanUd || cleanUd.includes(cleanLower) || cleanLower.includes(cleanUd)) return true;
-      
+
       // Special common abbreviations
       if (cleanLower === 'ias' && cleanUd.includes('academy')) return true;
       if (cleanUd === 'ias' && cleanLower.includes('academy')) return true;
@@ -832,13 +832,13 @@ const Layout = ({ user, onLogout, onUpdateUser }) => {
           </div>
         </div>
       )}
-      <div 
+      <div
         className="portal-theme flex h-screen bg-red-50 overflow-hidden font-sans"
         onClickCapture={trackInteraction}
       >
         {/* Sidebar */}
         <aside
-          className={`${isSidebarOpen ? "w-72" : "w-20"} bg-white border-r border-slate-200 text-slate-800 flex flex-col transition-all duration-300 shrink-0 z-50 shadow-sm`}
+          className={`${isSidebarOpen ? "w-68" : "w-20"} bg-white border-r border-slate-200 text-slate-800 flex flex-col transition-all duration-300 shrink-0 z-50 shadow-sm`}
         >
           <div className="p-6 flex items-center justify-between border-b border-slate-100">
             <img src={Logo} className={`w-[80%] h-full tracking-tight ${!isSidebarOpen && "hidden"}`} />
@@ -1357,7 +1357,7 @@ ${isSelected
               </div>
             </div>
           </header>
-          <main className="portal-content flex-1 overflow-y-auto p-8 relative">
+          <main className="portal-content flex-1 overflow-y-auto overflow-x-auto p-8 relative">
             {showProfile ? (
               <div className="bg-white w-full rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
                 <div className="p-6 border-b flex justify-between items-center bg-slate-50">

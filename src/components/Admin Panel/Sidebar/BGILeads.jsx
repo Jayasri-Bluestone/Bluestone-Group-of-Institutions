@@ -323,13 +323,17 @@ const BGILeads = ({ user }) => {
             const leadCode = String(lead.lead_code || "").toLowerCase();
             const id = String(lead.id || "");
             const leadDomain = String(lead.domain || "").toLowerCase();
+            const remarks = String(lead.remarks || "").toLowerCase();
+            const source = String(lead.source || "").toLowerCase();
             return (
               name.includes(q) ||
               email.includes(q) ||
               phone.includes(q) ||
               leadCode.includes(q) ||
               id.includes(q) ||
-              leadDomain.includes(q)
+              leadDomain.includes(q) ||
+              remarks.includes(q) ||
+              source.includes(q)
             );
           });
         }
@@ -594,7 +598,7 @@ const BGILeads = ({ user }) => {
   useEffect(() => {
     fetchLeads(1, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedView.apiView, pageSize, assignedTo, domain, status, paymentStatus, todayOnly, sortBy, sortOrder]);
+  }, [resolvedView.apiView, pageSize]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -867,7 +871,7 @@ const BGILeads = ({ user }) => {
           </div>
         </div>
 
-        <div className={`${data.leads.length > 10 ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
+        <div className={`overflow-x-auto ${data.leads.length > 10 ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr className="text-[10px] font-black text-slate-500 uppercase tracking-wider">

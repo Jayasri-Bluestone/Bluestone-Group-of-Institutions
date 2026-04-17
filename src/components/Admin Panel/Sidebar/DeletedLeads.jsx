@@ -185,7 +185,7 @@ const DeletedLeads = ({ user }) => {
 
       {/* Table Container */}
       <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-200 overflow-hidden">
-        <div className={`${currentItems.length > 10 ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
+        <div className={`overflow-x-auto ${currentItems.length > 10 ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
           <table className="w-full text-left">
             <thead className="bg-slate-50/50 border-b border-slate-100">
               <tr>
