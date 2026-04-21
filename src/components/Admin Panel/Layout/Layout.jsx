@@ -1445,7 +1445,7 @@ ${isSelected
             )}
             <div className="flex justify-end mt-8 pb-4">
               <p className="text-[12px] text-slate-300 font-medium ">
-                Bluestone Group of Institutions V1.3.0
+                Bluestone Group of Institutions V1.4.0
               </p>
             </div>
           </main>

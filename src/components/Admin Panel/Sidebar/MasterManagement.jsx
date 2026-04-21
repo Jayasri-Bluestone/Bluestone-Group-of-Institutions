@@ -11,6 +11,7 @@ import { confirmToast } from '../../../utils/toastConfirm';
 import { API_BASE_URL_PORTAL } from '../../../apiConfig';
 import UserManagement from './UserManagement';
 import Pagination from '../Layout/Pagination';
+import MultiDomainDropdown from './MultiSelectDD';
 
 const ICON_PACKS = {
   fa6: Fa6Icons,
@@ -152,11 +153,62 @@ const MasterManagement = ({ user }) => {
     logo_url: '',
   });
 
-  // Document Requirements States
-  const [docsModal, setDocsModal] = useState({ isOpen: false, level: '', parentId: '', parentName: '' });
-  const [docRequirements, setDocRequirements] = useState([]);
-  const [newDocName, setNewDocName] = useState('');
-  const [isMandatory, setIsMandatory] = useState(true);
+  // Documentation States
+  const [documents, setDocuments] = useState([]);
+  const [docModal, setDocModal] = useState({
+    isOpen: false,
+    id: null,
+    document_name: '',
+    is_mandatory: true,
+    access_configs: [{ domain_id: '', category_id: '', value_id: '' }]
+  });
+  const [docSearch, setDocSearch] = useState('');
+  const [docPage, setDocPage] = useState(1);
+  const [docItemsPerPage, setDocItemsPerPage] = useState(10);
+  const [docItemsPerPageValue, setDocItemsPerPageValue] = useState(10);
+
+  const filteredDocuments = useMemo(() => {
+    return documents.filter(d =>
+      d.document_name.toLowerCase().includes(docSearch.toLowerCase())
+    );
+  }, [documents, docSearch]);
+
+  const docTotalPages = Math.max(Math.ceil(filteredDocuments.length / docItemsPerPage), 1);
+  const docIndexOfLast = docPage * docItemsPerPage;
+  const docIndexOfFirst = docIndexOfLast - docItemsPerPage;
+  const currentDocumentsPaged = filteredDocuments.slice(docIndexOfFirst, docIndexOfLast);
+
+  useEffect(() => {
+    if (docItemsPerPageValue === 'all') {
+      setDocItemsPerPage(Math.max(filteredDocuments.length, 1));
+    }
+  }, [filteredDocuments.length, docItemsPerPageValue]);
+
+  useEffect(() => {
+    setDocPage(1);
+  }, [docSearch]);
+
+  const openNewDocModal = () => {
+    setDocModal({
+      isOpen: true,
+      id: null,
+      document_name: '',
+      is_mandatory: true,
+      access_configs: [{ domain_id: '', category_id: '', value_id: '' }]
+    });
+  };
+
+  const openEditDocModal = (doc) => {
+    setDocModal({
+      isOpen: true,
+      id: doc.id,
+      document_name: doc.document_name,
+      is_mandatory: Boolean(doc.is_mandatory),
+      access_configs: doc.access_configs && doc.access_configs.length > 0
+        ? doc.access_configs
+        : [{ domain_id: '', category_id: '', value_id: '' }]
+    });
+  };
 
   const allIconOptions = useMemo(() => {
     return Object.entries(ICON_PACKS).flatMap(([pack, icons]) =>
@@ -233,7 +285,154 @@ const MasterManagement = ({ user }) => {
     if (activeTab === 'manage_mail_id') {
       fetchSystemEmails();
     }
+    if (activeTab === 'documentation') {
+      fetchDocuments();
+    }
   }, [activeTab]);
+
+  const fetchDocuments = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) setDocuments(await res.json());
+    } catch { toast.error("Failed to load documentation list"); }
+  };
+
+  const saveDocument = async () => {
+    if (!docModal.document_name.trim()) {
+      toast.error("Document name is required");
+      return;
+    }
+    if (!(await confirmToast("Save document configuration?", "Save"))) return;
+    const tid = toast.loading("Saving document...");
+    try {
+      const isEdit = !!docModal.id;
+      const url = isEdit 
+        ? `${API_BASE_URL_PORTAL}/api/master/documents/${docModal.id}`
+        : `${API_BASE_URL_PORTAL}/api/master/documents`;
+      
+      const res = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          documentName: docModal.document_name,
+          isMandatory: docModal.is_mandatory,
+          access_configs: docModal.access_configs.filter(c => c.domain_id)
+        })
+      });
+
+      if (!res.ok) throw new Error();
+      toast.success(isEdit ? "Document updated" : "Document added", { id: tid });
+      setDocModal(prev => ({ ...prev, isOpen: false }));
+      fetchDocuments();
+    } catch {
+      toast.error("Failed to save document", { id: tid });
+    }
+  };
+
+  const toggleDocMandatory = async (doc) => {
+    if (!(await confirmToast(`Change mandatory status for ${doc.document_name}?`, "Change"))) return;
+    const tid = toast.loading("Updating status...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents/${doc.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          documentName: doc.document_name,
+          isMandatory: !doc.is_mandatory,
+          access_configs: doc.access_configs
+        })
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Status updated", { id: tid });
+      fetchDocuments();
+    } catch {
+      toast.error("Update failed", { id: tid });
+    }
+  };
+
+  const updateDocDomains = async (doc, domainNames) => {
+    if (!(await confirmToast(`Update domain access for ${doc.document_name}?`, "Update"))) return;
+    const newConfigs = domainNames.map(name => {
+      const d = data.find(item => item.name === name);
+      return { domain_id: d?.id };
+    }).filter(c => c.domain_id);
+
+    const tid = toast.loading("Updating domains...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents/${doc.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          documentName: doc.document_name,
+          isMandatory: doc.is_mandatory,
+          access_configs: newConfigs
+        })
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Domains updated", { id: tid });
+      fetchDocuments();
+    } catch {
+      toast.error("Update failed", { id: tid });
+    }
+  };
+
+  const deleteDocument = async (id) => {
+    if (!(await confirmToast("Delete this document definition?"))) return;
+    const tid = toast.loading("Deleting...");
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Document deleted", { id: tid });
+      fetchDocuments();
+    } catch {
+      toast.error("Delete failed", { id: tid });
+    }
+  };
+
+  const addDocAccessRule = () => {
+    setDocModal(prev => ({
+      ...prev,
+      access_configs: [...prev.access_configs, { domain_id: '', category_id: '', value_id: '' }]
+    }));
+  };
+
+  const removeDocAccessRule = (index) => {
+    setDocModal(prev => ({
+      ...prev,
+      access_configs: prev.access_configs.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateDocAccessRule = (index, field, value) => {
+    setDocModal(prev => {
+      const newConfigs = [...prev.access_configs];
+      newConfigs[index] = { ...newConfigs[index], [field]: value };
+      
+      // Reset dependent fields if domain or category changes
+      if (field === 'domain_id') {
+        newConfigs[index].category_id = '';
+        newConfigs[index].value_id = '';
+      } else if (field === 'category_id') {
+        newConfigs[index].value_id = '';
+      }
+      
+      return { ...prev, access_configs: newConfigs };
+    });
+  };
 
   const addSystemEmail = async () => {
     if (!newSystemEmail.label.trim() || !newSystemEmail.email.trim()) return;
@@ -551,6 +750,7 @@ const MasterManagement = ({ user }) => {
   };
 
   const saveEdit = async () => {
+    if (!(await confirmToast(`Save changes to ${editingItem.type.slice(0, -1)}?`, "Save"))) return;
     const { type, id, value } = editingItem;
     const endpoint = `${API_BASE_URL_PORTAL}/api/master/${type}/${id}`;
 
@@ -689,63 +889,7 @@ const MasterManagement = ({ user }) => {
     }
   };
 
-  // --- DOCUMENT REQUIREMENT ACTIONS ---
-  const fetchDocRequirements = async (level, parentId) => {
-    try {
-      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents/${level}/${parentId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (res.ok) setDocRequirements(await res.json());
-    } catch { toast.error("Failed to fetch requirements"); }
-  };
-
-  const openDocsModal = (level, parentId, parentName) => {
-    setDocsModal({ isOpen: true, level, parentId, parentName });
-    fetchDocRequirements(level, parentId);
-  };
-
-  const closeDocsModal = () => {
-    setDocsModal({ isOpen: false, level: '', parentId: '', parentName: '' });
-    setDocRequirements([]);
-    setNewDocName('');
-  };
-
-  const addDocRequirement = async () => {
-    if (!newDocName.trim()) return;
-    try {
-      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          level: docsModal.level,
-          parentId: docsModal.parentId,
-          documentName: newDocName.trim(),
-          isMandatory
-        })
-      });
-      if (res.ok) {
-        toast.success("Requirement added");
-        setNewDocName('');
-        fetchDocRequirements(docsModal.level, docsModal.parentId);
-      }
-    } catch { toast.error("Failed to add requirement"); }
-  };
-
-  const deleteDocRequirement = async (id) => {
-    try {
-      const res = await fetch(`${API_BASE_URL_PORTAL}/api/master/documents/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (res.ok) {
-        toast.success("Deleted");
-        fetchDocRequirements(docsModal.level, docsModal.parentId);
-      }
-    } catch { toast.error("Failed to delete"); }
-  };
+  // Removed legacy documentation actions (moved to centralized tab)
 
   const handleEditLogoUpload = (e) => {
     const file = e.target.files?.[0];
@@ -815,6 +959,7 @@ const MasterManagement = ({ user }) => {
             isSuperAdmin ? { id: 'domain_setup', label: 'Domain Setup', icon: LayoutGrid, activeColor: 'text-blue-600' } : null,
             { id: 'user_management', label: 'User Management', icon: Users, activeColor: 'text-indigo-600' },
             isSuperAdmin ? { id: 'user_hierarchy', label: 'User Hierarchy', icon: Network, activeColor: 'text-blue-600' } : null,
+            isSuperAdmin ? { id: 'documentation', label: 'Documentation', icon: FileText, activeColor: 'text-emerald-600' } : null,
             isSuperAdmin ? { id: 'manage_mail_id', label: 'Manage Mail ID', icon: Mail, activeColor: 'text-rose-600' } : null,
           ].filter(Boolean).map((tab) => {
             const isActive = activeTab === tab.id;
@@ -1054,15 +1199,6 @@ const MasterManagement = ({ user }) => {
                               >
                                 <Trash2 size={12} />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => selectedCategory && openDocsModal('category', selectedCategory.id, selectedCategory.category_name)}
-                                className="p-2 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100"
-                                title="Manage Category Documents"
-                                disabled={!selectedCategory}
-                              >
-                                <FileText size={12} />
-                              </button>
                             </div>
                             {editingItem.type === 'categories' && editingItem.id === selectedCatId && (
                               <div className="flex gap-2">
@@ -1163,15 +1299,7 @@ const MasterManagement = ({ user }) => {
                               >
                                 <Trash2 size={12} />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => selectedValue && openDocsModal('value', selectedValue.id, selectedValue.sub_value)}
-                                className="p-2 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100"
-                                title="Manage Value Documents"
-                                disabled={!selectedValue}
-                              >
-                                <FileText size={12} />
-                              </button>
+                              {/* Documentation button removed - now centralized */}
                             </div>
                             {editingItem.type === 'values' && editingItem.id === selectedValueId && (
                               <div className="flex gap-2">
@@ -1242,14 +1370,7 @@ const MasterManagement = ({ user }) => {
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openDocsModal('domain', domain.id, domain.name)}
-                              className="p-2 rounded-lg bg-amber-50 text-amber-600 border border-amber-100"
-                              title="Manage Domain Documents"
-                            >
-                              <FileText size={14} />
-                            </button>
+                             {/* Documentation button removed - now centralized */}
                             <button
                               type="button"
                               onClick={() => openDomainEditModal(domain)}
@@ -1468,6 +1589,161 @@ const MasterManagement = ({ user }) => {
                     Next
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'documentation' && (
+        <div className="space-y-6">
+          {/* Header & Search */}
+          <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
+                <FileText size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Documentation Requirements</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Centralized document management system</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:w-64">
+                <FileText size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search documents..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-bold focus:ring-4 ring-emerald-500/5 outline-none transition-all"
+                  value={docSearch}
+                  onChange={e => setDocSearch(e.target.value)}
+                />
+              </div>
+              <button
+                onClick={openNewDocModal}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-emerald-200 transition-all hover:scale-105 active:scale-95"
+              >
+                <Plus size={18} /> Add Document
+              </button>
+            </div>
+          </div>
+
+          {/* Table Header / Pagination Info */}
+          <div className="flex flex-col md:flex-row gap-4 items-center justify-between px-2">
+            <div className="flex items-center gap-3 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">
+              <span>Show</span>
+              <select
+                className="border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 outline-none hover:border-emerald-400 focus:border-emerald-500 transition-colors cursor-pointer shadow-sm"
+                value={docItemsPerPageValue}
+                onChange={(e) => {
+                  const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                  setDocItemsPerPageValue(val);
+                  if (val !== 'all') setDocItemsPerPage(val);
+                  setDocPage(1);
+                }}
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value="all">All</option>
+              </select>
+              <span>Entries</span>
+              <span className="text-slate-200 mx-2">|</span>
+              <span className="text-slate-500">
+                Displaying {filteredDocuments.length === 0 ? 0 : docIndexOfFirst + 1} - {Math.min(docIndexOfLast, filteredDocuments.length)} of {filteredDocuments.length} Documents
+              </span>
+            </div>
+          </div>
+
+          {/* Documents Table */}
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 relative">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50/50 border-b border-slate-100">
+                  <tr>
+                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Document Name</th>
+                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Mandatory</th>
+                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Applied To</th>
+                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {currentDocumentsPaged.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className="p-20 text-center">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="p-4 bg-slate-50 rounded-full text-slate-300">
+                            <FileText size={40} />
+                          </div>
+                          <p className="text-sm font-bold text-slate-400 uppercase tracking-widest italic">No documents found matching your criteria</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    currentDocumentsPaged.map(doc => (
+                      <tr key={doc.id} className="hover:bg-slate-50/30 transition-colors group">
+                        <td className="p-5">
+                          <span className="text-sm font-black text-slate-700 uppercase tracking-tight group-hover:text-emerald-600 transition-colors">
+                            {doc.document_name}
+                          </span>
+                        </td>
+                        <td className="p-5 text-center">
+                          <button
+                            onClick={() => toggleDocMandatory(doc)}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-200 ease-in-out ${doc.is_mandatory ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                          >
+                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${doc.is_mandatory ? 'translate-x-2' : '-translate-x-2'}`} />
+                          </button>
+                        </td>
+                        <td className="p-5">
+                          <MultiDomainDropdown
+                            domains={data}
+                            value={doc.access_configs.map(c => data.find(d => Number(d.id) === Number(c.domain_id))?.name).filter(Boolean).join(", ")}
+                            onChange={(val) => updateDocDomains(doc, val.split(",").map(s => s.trim()).filter(Boolean))}
+                            className="max-w-xs"
+                          />
+                        </td>
+                        <td className="p-5 text-right">
+                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => openEditDocModal(doc)}
+                              className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                              title="Edit"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button
+                              onClick={() => deleteDocument(doc.id)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              title="Delete"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Pagination Component */}
+            {filteredDocuments.length > 0 && (
+              <div className="p-4 border-t border-slate-50 bg-slate-50/30">
+                <Pagination
+                  stats={{ currentPage: docPage, totalPages: docTotalPages }}
+                  onPageChange={(newPage) => setDocPage(newPage)}
+                  pageSize={docItemsPerPage}
+                  pageSizeValue={docItemsPerPageValue}
+                  onPageSizeChange={(val) => {
+                    setDocItemsPerPageValue(val);
+                    if (val !== 'all') setDocItemsPerPage(val);
+                    setDocPage(1);
+                  }}
+                  pageSizeOptions={[10, 20, 50, 100, 'all']}
+                />
               </div>
             )}
           </div>
@@ -1725,93 +2001,81 @@ const MasterManagement = ({ user }) => {
         </div>
       )}
 
-      {/* --- DOCUMENT REQUIREMENTS MODAL --- */}
-      {docsModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b flex items-center justify-between bg-slate-900 text-white">
+      {/* --- DOCUMENTATION EDIT MODAL --- */}
+      {docModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-4xl w-full my-auto shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b flex items-center justify-between bg-emerald-600 text-white rounded-t-3xl">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/10 rounded-lg">
-                  <FileText size={20} className="text-emerald-400" />
+                  <FileText size={20} className="text-white" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm uppercase tracking-wider">Required Documents</h3>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest">{docsModal.level}: {docsModal.parentName}</p>
+                  <h3 className="font-black text-sm uppercase tracking-wider">{docModal.id ? 'Edit Document' : 'Add New Document'}</h3>
+                  <p className="text-[10px] text-emerald-100 uppercase tracking-widest">Configure global document requirements</p>
                 </div>
               </div>
-              <button onClick={closeDocsModal} className="hover:bg-white/10 p-2 rounded-full transition-colors">
+              <button onClick={() => setDocModal(prev => ({ ...prev, isOpen: false }))} className="hover:bg-white/10 p-2 rounded-full transition-colors">
                 <X size={20} />
               </button>
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Add New Section */}
-              <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Add New Requirement</label>
-                <div className="flex gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Document Name</label>
                   <input
-                    autoFocus
-                    className="flex-1 p-3 border rounded-xl bg-white text-sm shadow-sm focus:ring-2 focus:ring-slate-900 outline-none transition-all"
-                    placeholder="e.g. Passport Copy"
-                    value={newDocName}
-                    onChange={(e) => setNewDocName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addDocRequirement()}
+                    className="w-full p-3 border rounded-xl bg-slate-50 text-sm font-bold focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                    placeholder="e.g. SSLC Marksheet"
+                    value={docModal.document_name}
+                    onChange={e => setDocModal({ ...docModal, document_name: e.target.value })}
                   />
-                  <div className="flex flex-col gap-1 items-center justify-center px-3 border rounded-xl bg-white">
-                    <span className="text-[8px] font-black uppercase text-slate-400">Mandatory</span>
-                    <input
-                      type="checkbox"
-                      checked={isMandatory}
-                      onChange={(e) => setIsMandatory(e.target.checked)}
-                      className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900"
-                    />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Requirement Type</label>
+                  <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={docModal.is_mandatory}
+                        onChange={e => setDocModal({ ...docModal, is_mandatory: e.target.checked })}
+                        className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs font-bold text-slate-600 group-hover:text-emerald-600 transition-colors">Mark as Mandatory</span>
+                    </label>
                   </div>
-                  <button
-                    onClick={addDocRequirement}
-                    className="bg-slate-900 text-white px-4 rounded-xl hover:bg-black transition-all shadow-lg shadow-slate-200"
-                  >
-                    <Plus size={20} />
-                  </button>
                 </div>
               </div>
 
-              {/* List Section */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Existing Requirements ({docRequirements.length})</span>
-                </div>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                  {docRequirements.length === 0 ? (
-                    <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                      <p className="text-xs text-slate-400 italic">No document requirements defined yet.</p>
-                    </div>
-                  ) : (
-                    docRequirements.map((req) => (
-                      <div key={req.id} className="group flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-300 transition-all shadow-sm">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 rounded-full ${req.is_mandatory ? 'bg-rose-500' : 'bg-slate-300'}`} title={req.is_mandatory ? "Mandatory" : "Optional"} />
-                          <span className="text-sm font-bold text-slate-700">{req.document_name}</span>
-                          {!req.is_mandatory && <span className="text-[9px] font-black text-slate-300 uppercase leading-none mt-0.5">Optional</span>}
-                        </div>
-                        <button
-                          onClick={() => deleteDocRequirement(req.id)}
-                          className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))
-                  )}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Required For Domains</label>
+                  <MultiDomainDropdown
+                    domains={data}
+                    value={docModal.access_configs.map(c => data.find(d => Number(d.id) === Number(c.domain_id))?.name).filter(Boolean).join(", ")}
+                    onChange={(val) => {
+                      const names = val.split(",").map(s => s.trim()).filter(Boolean);
+                      const configs = names.map(name => ({ domain_id: data.find(d => d.name === name)?.id }));
+                      setDocModal(prev => ({ ...prev, access_configs: configs }));
+                    }}
+                  />
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide ml-1 italic">Select one or more domains where this document is required.</p>
                 </div>
               </div>
             </div>
 
-            <div className="p-6 bg-slate-50 border-t flex justify-end">
+            <div className="p-6 bg-slate-50 border-t flex justify-end gap-3">
               <button
-                onClick={closeDocsModal}
+                onClick={() => setDocModal(prev => ({ ...prev, isOpen: false }))}
                 className="px-6 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
               >
-                Close
+                Cancel
+              </button>
+              <button
+                onClick={saveDocument}
+                className="px-8 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-200 transition-all hover:scale-105"
+              >
+                Save Document
               </button>
             </div>
           </div>

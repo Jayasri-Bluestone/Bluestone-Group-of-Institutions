@@ -7,6 +7,7 @@ import {
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import Pagination from "../Layout/Pagination";
 import { confirmToast } from "../../../utils/toastConfirm";
+import { motion, AnimatePresence } from "framer-motion";
 
 const DeletedLeads = ({ user }) => {
   const [leads, setLeads] = useState([]);
@@ -16,6 +17,8 @@ const DeletedLeads = ({ user }) => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [sortBy, setSortBy] = useState("deleted_at");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
 
   const fetchDeletedLeads = useCallback(async () => {
     setLoading(true);
@@ -41,7 +44,12 @@ const DeletedLeads = ({ user }) => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+    setSelectedIds([]);
+  }, [searchTerm, itemsPerPage]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [currentPage]);
 
   const handleRestore = async (id, name) => {
     const confirmed = await confirmToast(`Restore enquiry for ${name}?`, "Restore");
@@ -89,6 +97,83 @@ const DeletedLeads = ({ user }) => {
     return 0;
   });
 
+  const totalPages = Math.ceil(filteredLeads.length / itemsPerPage);
+  const currentItems = filteredLeads.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === currentItems.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(currentItems.map(l => l.id));
+    }
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkPermanentDelete = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = await confirmToast(`PERMANENTLY DELETE ${selectedIds.length} enquiries? This action is IRREVERSIBLE and will remove all associated documents and history.`, "Delete Permanently");
+    if (!confirmed) return;
+
+    const loadToast = toast.loading("Purging records permanently...");
+    setIsProcessingBulk(true);
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/admin/leads/permanent-delete`, {
+        method: "DELETE",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}` 
+        },
+        body: JSON.stringify({ ids: selectedIds })
+      });
+      if (res.ok) {
+        toast.success("Enquiries purged from database", { id: loadToast });
+        setSelectedIds([]);
+        fetchDeletedLeads();
+      } else {
+        toast.error("Failed to purge records", { id: loadToast });
+      }
+    } catch (err) {
+      toast.error("Server error during deletion", { id: loadToast });
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
+  const handleBulkRestore = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = await confirmToast(`Restore ${selectedIds.length} enquiries to active lists?`, "Restore Selected");
+    if (!confirmed) return;
+
+    const loadToast = toast.loading("Restoring multiple enquiries...");
+    setIsProcessingBulk(true);
+    try {
+      const res = await fetch(`${API_BASE_URL_PORTAL}/api/admin/leads/bulk-restore`, {
+        method: "PATCH",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}` 
+        },
+        body: JSON.stringify({ ids: selectedIds })
+      });
+      if (res.ok) {
+        toast.success("Enquiries restored successfully", { id: loadToast });
+        setSelectedIds([]);
+        fetchDeletedLeads();
+      } else {
+        toast.error("Failed to restore records", { id: loadToast });
+      }
+    } catch (err) {
+      toast.error("Server error during restoration", { id: loadToast });
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
   const SortHeader = ({ label, sortKey, className = "" }) => {
     const isActive = sortBy === sortKey;
     return (
@@ -114,8 +199,7 @@ const DeletedLeads = ({ user }) => {
     );
   };
 
-  const totalPages = Math.ceil(filteredLeads.length / itemsPerPage);
-  const currentItems = filteredLeads.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // totalPages and currentItems moved up to be available for select all
 
   if (loading && leads.length === 0) {
     return (
@@ -189,6 +273,14 @@ const DeletedLeads = ({ user }) => {
           <table className="w-full text-left">
             <thead className="bg-slate-50/50 border-b border-slate-100">
               <tr>
+                <th className="px-4 py-4 w-10 text-center">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    checked={currentItems.length > 0 && selectedIds.length === currentItems.length}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
                 <SortHeader label="Enquiry Details" sortKey="student_name" className="px-4 py-4 text-[10px]" />
                 <SortHeader label="Domain & Category" sortKey="domain" className="px-4 py-4 text-[10px]" />
                 <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Remarks</th>
@@ -198,7 +290,15 @@ const DeletedLeads = ({ user }) => {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {currentItems.length > 0 ? currentItems.map((lead) => (
-                <tr key={lead.id} className="hover:bg-slate-50/30 transition-colors group">
+                <tr key={lead.id} className={`${selectedIds.includes(lead.id) ? 'bg-blue-50/50' : 'hover:bg-slate-50/30'} transition-colors group`}>
+                  <td className="px-4 py-4 text-center">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      checked={selectedIds.includes(lead.id)}
+                      onChange={() => toggleSelect(lead.id)}
+                    />
+                  </td>
                   <td className="px-4 py-4">
                     <div className="space-y-0.5">
                       <p className="font-black text-slate-800 text-[12px] group-hover:text-blue-600 transition-colors uppercase tracking-tight whitespace-normal break-words leading-tight">
@@ -224,7 +324,7 @@ const DeletedLeads = ({ user }) => {
                   </td>
                   <td className="px-4 py-4">
                     <p className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight">
-                      {lead.remarks || "-"}
+                      {lead.deleted_remarks || "-"}
                     </p>
                   </td>
                   <td className="px-4 py-4">
@@ -252,7 +352,7 @@ const DeletedLeads = ({ user }) => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan="4" className="px-6 py-20 text-center">
+                  <td colSpan="6" className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="p-4 bg-slate-50 rounded-full text-slate-300">
                         <Trash2 size={40} />
@@ -275,6 +375,51 @@ const DeletedLeads = ({ user }) => {
           </div>
         )}
       </div>
+
+      {/* Floating Action Bar */}
+      <AnimatePresence>
+        {selectedIds.length > 0 && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-3xl shadow-2xl flex items-center gap-8 z-[100] border border-slate-800 backdrop-blur-xl bg-opacity-90"
+          >
+            <div className="flex items-center gap-3 pr-6 border-r border-slate-700">
+              <div className="bg-blue-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-black">
+                {selectedIds.length}
+              </div>
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-300">Enquiries Selected</p>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleBulkRestore}
+                disabled={isProcessingBulk}
+                className="flex items-center gap-2 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+              >
+                <RotateCcw size={16} /> Restore All
+              </button>
+              
+              <button
+                onClick={handleBulkPermanentDelete}
+                disabled={isProcessingBulk}
+                className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-red-900/20 active:scale-95 disabled:opacity-50"
+              >
+                <Trash2 size={16} /> Delete Permanently
+              </button>
+              
+              <button
+                onClick={() => setSelectedIds([])}
+                className="text-slate-400 hover:text-white transition-colors p-2"
+                title="Cancel Selection"
+              >
+                <ChevronDown size={20} className="rotate-90" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="bg-blue-600 p-8 rounded-[2rem] text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-blue-200">
         <div className="flex items-center gap-5">

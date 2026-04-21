@@ -11,6 +11,7 @@ import { exportToExcel } from "../../../utils/exportExcel";
 import { RiDeleteBin4Fill } from "react-icons/ri";
 import { FaFileExcel } from "react-icons/fa6";
 import { BiExport } from "react-icons/bi";
+import { motion, AnimatePresence } from "framer-motion";
 
 const viewConfig = {
   "all-enquiry": { apiView: "all", title: "All Enquiries", forcedStatus: "New" },
@@ -44,6 +45,8 @@ const BGILeads = ({ user }) => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [remarksHistory, setRemarksHistory] = useState([]);
   const [historyCandidate, setHistoryCandidate] = useState("");
+  const [deleteModal, setDeleteModal] = useState({ show: false, ids: [], title: "" });
+  const [deleteRemark, setDeleteRemark] = useState("");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
@@ -514,22 +517,27 @@ const BGILeads = ({ user }) => {
     }
   };
 
-  const deleteLead = async (id) => {
-    return deleteLeadById(id);
+  const deleteLead = async (id, name) => {
+    setDeleteRemark("");
+    setDeleteModal({ show: true, ids: [id], title: `Delete "${name}"?` });
   };
 
   const deleteLeadById = async (id, options = {}) => {
-    const { skipConfirm = false, suppressRefresh = false, suppressToast = false } = options;
+    const { skipConfirm = false, suppressRefresh = false, suppressToast = false, remarks = null } = options;
     if (!skipConfirm) {
-      const confirmed = await confirmToast("Delete this lead?", "Delete");
-      if (!confirmed) return false;
+      // This is now handled by DeleteRemarkModal
+      return false;
     }
 
     const tid = suppressToast ? null : toast.loading("Deleting lead...");
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}` 
+        },
+        body: JSON.stringify({ remarks })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -542,6 +550,41 @@ const BGILeads = ({ user }) => {
     } catch {
       if (!suppressToast) toast.error("Delete failed", { id: tid });
       return false;
+    }
+  };
+
+  const confirmDeleteWithRemark = async () => {
+    if (!deleteRemark.trim()) {
+      toast.error("Please provide a reason for deletion");
+      return;
+    }
+
+    const { ids } = deleteModal;
+    const tid = toast.loading(`Deleting ${ids.length} record(s)...`);
+    
+    try {
+      const results = await Promise.all(
+        ids.map(id => deleteLeadById(id, { 
+          skipConfirm: true, 
+          suppressRefresh: true, 
+          suppressToast: true, 
+          remarks: deleteRemark 
+        }))
+      );
+      
+      const failed = results.filter(ok => !ok).length;
+      if (failed > 0) {
+        toast.error(`${failed} record(s) failed to delete`, { id: tid });
+      } else {
+        toast.success(`${ids.length} record(s) deleted successfully`, { id: tid });
+      }
+      
+      setDeleteModal({ show: false, ids: [], title: "" });
+      setDeleteRemark("");
+      setSelectedLeadIds([]);
+      fetchLeads(data.page || 1, pageSize);
+    } catch (err) {
+      toast.error("An error occurred during deletion", { id: tid });
     }
   };
 
@@ -647,25 +690,12 @@ const BGILeads = ({ user }) => {
 
   const bulkDeleteLeads = async () => {
     if (selectedLeadIds.length === 0) return;
-    const confirmed = await confirmToast(
-      `Delete ${selectedLeadIds.length} lead(s)?`,
-      "Delete"
-    );
-    if (!confirmed) return;
-    const tid = toast.loading(`Deleting ${selectedLeadIds.length} lead(s)...`);
-    const results = await Promise.all(
-      selectedLeadIds.map((id) =>
-        deleteLeadById(id, { skipConfirm: true, suppressRefresh: true, suppressToast: true })
-      )
-    );
-    const failed = results.filter((ok) => !ok).length;
-    if (failed > 0) {
-      toast.error(`${failed} lead(s) failed to delete`, { id: tid });
-    } else {
-      toast.success("Selected leads deleted", { id: tid });
-    }
-    setSelectedLeadIds([]);
-    fetchLeads(data.page || 1, pageSize);
+    setDeleteRemark("");
+    setDeleteModal({ 
+      show: true, 
+      ids: selectedLeadIds, 
+      title: `Bulk Delete ${selectedLeadIds.length} enquiries?` 
+    });
   };
 
   const exportLeadsExcel = async () => {
@@ -992,7 +1022,7 @@ const BGILeads = ({ user }) => {
                         <Edit size={15} />
                       </button>
                       <button
-                        onClick={() => deleteLead(lead.id)}
+                        onClick={() => deleteLead(lead.id, lead.student_name)}
                         className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors border border-red-100"
                         title="Delete Lead"
                       >
@@ -1150,6 +1180,55 @@ const BGILeads = ({ user }) => {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {deleteModal.show && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl overflow-hidden border border-slate-100"
+          >
+            <div className="p-8 pb-4">
+              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-black text-slate-800 text-center uppercase tracking-tight mb-2">
+                {deleteModal.title}
+              </h3>
+              <p className="text-sm text-slate-500 text-center font-medium px-4">
+                Please provide a reason for this deletion. This will be recorded for audit purposes.
+              </p>
+            </div>
+
+            <div className="p-8 pt-4 space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Deletion Remarks</label>
+                <textarea 
+                  value={deleteRemark}
+                  onChange={(e) => setDeleteRemark(e.target.value)}
+                  placeholder="Why is this record being deleted? (e.g., Duplicate, Junk, Not Interested...)"
+                  className="w-full h-32 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-4 ring-red-500/5 focus:border-red-200 transition-all resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setDeleteModal({ show: false, ids: [], title: "" })}
+                  className="flex-1 py-4 text-[10px] font-black rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all uppercase tracking-widest"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteWithRemark}
+                  className="flex-1 py-4 text-[10px] font-black rounded-xl bg-red-600 text-white hover:bg-red-700 transition-all shadow-lg shadow-red-100 active:scale-95 uppercase tracking-widest"
+                >
+                  Confirm Delete
+                </button>
+              </div>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

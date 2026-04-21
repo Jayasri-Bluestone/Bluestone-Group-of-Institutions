@@ -1,12 +1,74 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { RefreshCcw, ChevronUp, Plus, ChevronDown, MessageSquare, User, PenTool, CreditCard, ChevronRight, Mail, FileText, UploadCloud, CheckCircle2, XCircle, Clock, Eye, Trash2, Download } from "lucide-react";
+import { RefreshCcw, ChevronUp, Plus, ChevronDown, MessageSquare, User, PenTool, CreditCard, ChevronRight, Mail, FileText, UploadCloud, CheckCircle2, XCircle, Clock, Eye, Trash2, Download, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import LoadingScreen from "../Layout/LoadingScreen";
 import { formatToLocalDateTime, parseAsIST } from "../../../utils/timeUtils";
 import { API_BASE_URL_PORTAL } from "../../../apiConfig";
 import { confirmToast } from "../../../utils/toastConfirm";
+import Pagination from "../Layout/Pagination";
+
+const DocPercentageCircle = ({ percentage }) => {
+  const radius = 14;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percentage / 100) * circumference;
+  
+  let colorClass = "stroke-rose-500";
+  let borderClass = "border-rose-100";
+  let bgClass = "bg-rose-50";
+  let textColor = "text-rose-700";
+  
+  if (percentage === 100) {
+    colorClass = "stroke-emerald-500";
+    borderClass = "border-emerald-100";
+    bgClass = "bg-emerald-50";
+    textColor = "text-emerald-700";
+  } else if (percentage >= 50) {
+    colorClass = "stroke-amber-500";
+    borderClass = "border-amber-100";
+    bgClass = "bg-amber-50";
+    textColor = "text-amber-700";
+  } else if (percentage > 0) {
+    colorClass = "stroke-orange-500";
+    borderClass = "border-orange-100";
+    bgClass = "bg-orange-50";
+    textColor = "text-orange-700";
+  }
+
+  return (
+    <div className={`relative flex items-center justify-center w-10 h-10 rounded-full border-2 ${borderClass} ${bgClass} shadow-sm group transition-all hover:scale-105`}>
+      <svg className="w-8 h-8 transform -rotate-90">
+        <circle
+          cx="16"
+          cy="16"
+          r={radius}
+          stroke="currentColor"
+          strokeWidth="3"
+          fill="transparent"
+          className="text-slate-100"
+        />
+        <motion.circle
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 1, ease: "easeOut" }}
+          cx="16"
+          cy="16"
+          r={radius}
+          stroke="currentColor"
+          strokeWidth="3"
+          fill="transparent"
+          strokeDasharray={circumference}
+          strokeLinecap="round"
+          className={`${colorClass}`}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center">
+        <span className={`text-[8px] font-black ${textColor}`}>{Math.round(percentage)}%</span>
+      </div>
+    </div>
+  );
+};
 
 const LeadDetails = ({ user }) => {
   const getTier = (u) => {
@@ -40,6 +102,7 @@ const LeadDetails = ({ user }) => {
   // Visibility States
   // Visibility States (Accordion Layout)
   const [expandedSection, setExpandedSection] = useState('message'); // 'message', 'profile', 'remarks', 'payments' or null
+  const [docStats, setDocStats] = useState({ total: 0, uploaded: 0, percentage: 0 });
 
 
   const AUTO_REFRESH_MS = 300000; // Updated from 30s to 5m to prevent DB exhaust
@@ -169,6 +232,7 @@ const LeadDetails = ({ user }) => {
   }, [leadId]);
 
   const saveRemarks = async () => {
+    if (!(await confirmToast("Save lead remarks?", "Save"))) return;
     const tid = toast.loading("Saving remark...");
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/remarks`, {
@@ -188,6 +252,7 @@ const LeadDetails = ({ user }) => {
   };
 
   const savePayment = async () => {
+    if (!(await confirmToast("Save payment updates?", "Save"))) return;
     const tid = toast.loading("Saving payment details...");
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/payment`, {
@@ -292,6 +357,11 @@ const LeadDetails = ({ user }) => {
     if (isSendingMessage) return;
 
     setIsSendingMessage(true);
+    const label = sendMail ? "Save and Send" : "Save Only";
+    if (!(await confirmToast(`${label} this message?`))) {
+      setIsSendingMessage(false);
+      return;
+    }
     const tid = toast.loading(sendMail ? "Saving and sending..." : "Saving message...");
 
     try {
@@ -456,7 +526,7 @@ const LeadDetails = ({ user }) => {
     ? remarkMessages
     : remarkMessages.slice(0, 3);
 
-  const SectionHeader = ({ title, id, currentExpanded, setExpanded, icon: Icon, color = "text-slate-400" }) => {
+  const SectionHeader = ({ title, id, currentExpanded, setExpanded, icon: Icon, color = "text-slate-400", rightElement }) => {
     const isExpanded = currentExpanded === id;
     return (
         <button 
@@ -475,8 +545,11 @@ const LeadDetails = ({ user }) => {
                     </h3>
                 </div>
             </div>
-            <div className={`transition-all duration-500 rounded-full p-1 ${isExpanded ? "bg-slate-200/50 text-slate-900 rotate-180" : "bg-transparent text-slate-300 group-hover:text-slate-400"}`}>
-                <ChevronDown size={20} />
+            <div className="flex items-center gap-4">
+                {rightElement}
+                <div className={`transition-all duration-500 rounded-full p-1 ${isExpanded ? "bg-slate-200/50 text-slate-900 rotate-180" : "bg-transparent text-slate-300 group-hover:text-slate-400"}`}>
+                    <ChevronDown size={20} />
+                </div>
             </div>
         </button>
     );
@@ -1004,6 +1077,7 @@ const LeadDetails = ({ user }) => {
             setExpanded={setExpandedSection}
             icon={FileText} 
             color="text-emerald-600"
+            rightElement={docStats.total > 0 && <DocPercentageCircle percentage={docStats.percentage} />}
           />
           <AnimatePresence>
             {expandedSection === 'documents' && (
@@ -1014,7 +1088,11 @@ const LeadDetails = ({ user }) => {
                 transition={{ duration: 0.3 }}
                 className="overflow-hidden"
               >
-                <DocumentManager leadId={leadId} isAdminTier={isAdminTier} />
+                <DocumentManager 
+                  leadId={leadId} 
+                  isAdminTier={isAdminTier} 
+                  onStatsUpdate={setDocStats} 
+                />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1098,7 +1176,64 @@ const InfoRow = ({ label, value }) => (
   </div>
 );
 
-const DocRow = ({ req, upload, onUpload, onDelete, onCheck, uploading, isAdminTier }) => {
+const FilePreviewModal = ({ file, onClose }) => {
+  if (!file) return null;
+  const isPDF = file.type.toLowerCase() === 'pdf' || file.url.toLowerCase().endsWith('.pdf');
+
+  return (
+    <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-5xl h-[90vh] rounded-[2rem] shadow-2xl overflow-hidden flex flex-col relative border border-white/20">
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+              <FileText size={24} />
+            </div>
+            <div>
+              <h3 className="font-black text-slate-800 text-lg uppercase tracking-tight">{file.name}</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Document Preview</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => window.open(file.url, '_blank')}
+              className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+            >
+              Open in new tab
+            </button>
+            <button
+              onClick={onClose}
+              className="p-3 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-2xl transition-all active:scale-95"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex-1 bg-slate-50 p-8 overflow-auto flex items-center justify-center">
+          {isPDF ? (
+            <iframe 
+              src={`${file.url}#toolbar=0`} 
+              className="w-full h-full rounded-xl shadow-inner border border-slate-200"
+              title="PDF Preview"
+            />
+          ) : (
+            <img 
+              src={file.url} 
+              alt={file.name} 
+              className="max-w-full max-h-full object-contain rounded-xl shadow-2xl border border-white p-2 bg-white"
+            />
+          )}
+        </div>
+
+        <div className="p-4 bg-white border-t border-slate-100 flex justify-center">
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Bluestone Secure Document Viewer</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DocRow = ({ req, upload, onUpload, onDelete, onCheck, uploading, isAdminTier, onPreview }) => {
   const statusColors = {
     'Pending': 'bg-slate-100 text-slate-500',
     'Collected': 'bg-amber-100 text-amber-600',
@@ -1132,7 +1267,12 @@ const DocRow = ({ req, upload, onUpload, onDelete, onCheck, uploading, isAdminTi
             <FileText size={16} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-slate-700 truncate">{req.document_name}</p>
+            <p 
+              className={`text-xs font-bold truncate ${upload ? 'text-emerald-600 hover:underline cursor-pointer' : 'text-slate-700'}`}
+              onClick={() => upload && window.open(`${API_BASE_URL_PORTAL}/${upload.file_path}`, '_blank')}
+            >
+              {req.document_name}
+            </p>
             <p className="text-[9px] text-slate-400 uppercase tracking-tighter font-bold">{req.level} Requirement</p>
           </div>
         </div>
@@ -1157,70 +1297,84 @@ const DocRow = ({ req, upload, onUpload, onDelete, onCheck, uploading, isAdminTi
         )}
       </td>
       <td className="p-4">
-        <div className={`inline-flex px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${statusColors[upload?.status || 'Pending']}`}>
-          {upload?.status || 'Pending'}
+        <div className={`inline-flex px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${statusColors[upload?.status === 'Collected' ? 'Pending' : (upload?.status || 'Pending')]}`}>
+          {upload?.status === 'Collected' ? 'Pending' : (upload?.status || 'Pending')}
         </div>
       </td>
-      <td className="p-4">
-        <div className="flex items-center gap-2">
-          {!upload ? (
-            <label className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all ${uploading ? 'bg-slate-100 text-slate-400' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'}`}>
-              <UploadCloud size={12} />
-              {uploading ? 'UP...' : 'Upload'}
-              <input 
-                type="file" 
-                className="hidden" 
-                disabled={uploading} 
-                accept="application/pdf,image/*" 
-                onChange={(e) => onUpload(e, req.id, req.document_name)} 
-              />
-            </label>
-          ) : (
+      <td className="p-4 text-right">
+        <div className="flex items-center justify-end gap-1.5">
+          {upload && (
             <>
               <button 
-                onClick={() => window.open(`${API_BASE_URL_PORTAL}/${upload.file_path}`, '_blank')}
-                className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all font-bold"
+                onClick={() => onPreview({ url: `${API_BASE_URL_PORTAL}/${upload.file_path}`, name: upload.document_name, type: upload.file_path.split('.').pop() })}
+                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                 title="View"
               >
-                <Eye size={12} />
+                <Eye size={14} />
               </button>
-
               <button 
-                onClick={() => handleDownload(upload.file_path, `${req.document_name}_${upload.id}`)}
-                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all"
+                onClick={() => handleDownload(upload.file_path, upload.document_name)}
+                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                 title="Download"
               >
-                <Download size={12} />
+                <Download size={14} />
               </button>
-              
-              {isAdminTier && (
-                <button 
-                  onClick={() => onDelete(upload.id)}
-                  className="p-1.5 rounded-lg bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"
-                  title="Delete"
-                >
-                  <Trash2 size={12} />
-                </button>
-              )}
+              <button 
+                onClick={() => onDelete(upload.id)}
+                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                title="Remove"
+              >
+                <Trash2 size={14} />
+              </button>
             </>
           )}
+
+          <label className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all ${uploading ? 'bg-slate-100 text-slate-400' : 'bg-slate-800 text-white hover:bg-black shadow-sm'}`}>
+            <UploadCloud size={12} />
+            {uploading ? 'UP...' : (upload ? 'Update' : 'Upload')}
+            <input 
+              type="file" 
+              className="hidden" 
+              disabled={uploading} 
+              accept="application/pdf,image/*" 
+              onChange={(e) => onUpload(e, req.id, req.document_name)} 
+            />
+          </label>
         </div>
       </td>
     </tr>
   );
 };
 
-const DocumentManager = ({ leadId, isAdminTier }) => {
+const DocumentManager = ({ leadId, isAdminTier, onStatsUpdate }) => {
   const [data, setData] = useState({ requirements: [], uploads: [] });
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(null);
+  const [docPage, setDocPage] = useState(1);
+  const [docItemsPerPage, setDocItemsPerPage] = useState(5);
+  const [docItemsPerPageValue, setDocItemsPerPageValue] = useState(5);
+  const [previewFile, setPreviewFile] = useState(null);
 
   const fetchDocs = async () => {
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/document-requirements`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
-      if (res.ok) setData(await res.json());
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+
+        // Calculate stats for percentage circle
+        const total = json.requirements.length;
+        const uploadedCount = json.requirements.filter(req => 
+          json.uploads.some(u => u.requirement_id === req.id)
+        ).length;
+        const percentage = total > 0 ? (uploadedCount / total) * 100 : 0;
+        
+        if (onStatsUpdate) {
+          onStatsUpdate({ total, uploaded: uploadedCount, percentage });
+        }
+      }
     } catch { toast.error("Failed to load documents"); }
     finally { setLoading(false); }
   };
@@ -1228,6 +1382,7 @@ const DocumentManager = ({ leadId, isAdminTier }) => {
   useEffect(() => { fetchDocs(); }, [leadId]);
 
   const toggleChecklist = async (requirementId, docName) => {
+    if (!(await confirmToast(`Update checklist for ${docName}?`, "Update"))) return;
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/documents/checklist`, {
         method: "POST",
@@ -1235,7 +1390,7 @@ const DocumentManager = ({ leadId, isAdminTier }) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`
         },
-        body: JSON.stringify({ requirementId, documentName })
+        body: JSON.stringify({ requirementId, documentName: docName })
       });
       if (res.ok) {
         toast.success("Checklist updated");
@@ -1247,6 +1402,7 @@ const DocumentManager = ({ leadId, isAdminTier }) => {
   const handleUpload = async (e, requirementId, docName) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!(await confirmToast(`Upload "${file.name}" as ${docName}?`, "Upload"))) return;
 
     // Client-side validation
     const maxSizeBytes = 1024 * 1024; // 1 MB
@@ -1286,6 +1442,7 @@ const DocumentManager = ({ leadId, isAdminTier }) => {
   };
 
   const updateStatus = async (docId, status) => {
+    if (!(await confirmToast(`Change status to ${status}?`, "Change"))) return;
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/documents/${docId}/status`, {
         method: "PATCH",
@@ -1303,7 +1460,7 @@ const DocumentManager = ({ leadId, isAdminTier }) => {
   };
 
   const deleteDoc = async (docId) => {
-    if (!(await confirmToast("Delete this document?"))) return;
+    if (!(await confirmToast("Delete this document?", "Delete"))) return;
     try {
       const res = await fetch(`${API_BASE_URL_PORTAL}/api/leads/${leadId}/documents/${docId}`, {
         method: "DELETE",
@@ -1316,55 +1473,95 @@ const DocumentManager = ({ leadId, isAdminTier }) => {
     } catch { toast.error("Delete failed"); }
   };
 
+  const allDocs = [
+    ...data.requirements.map(req => ({
+      id: `req-${req.id}`,
+      req,
+      upload: data.uploads.find(u => u.requirement_id === req.id),
+      onCheck: toggleChecklist,
+      uploading: uploading === req.id
+    })),
+    ...data.uploads.filter(u => !u.requirement_id).map(u => ({
+      id: `extra-${u.id}`,
+      req: { document_name: u.document_name, is_mandatory: 0, level: 'Ad-hoc' },
+      upload: u,
+      onCheck: () => {},
+      uploading: uploading === u.document_name
+    }))
+  ];
+
+  const docTotalPages = Math.max(Math.ceil(allDocs.length / docItemsPerPage), 1);
+  const docIndexOfLast = docPage * docItemsPerPage;
+  const docIndexOfFirst = docIndexOfLast - docItemsPerPage;
+  const currentDocs = allDocs.slice(docIndexOfFirst, docIndexOfLast);
+
+  useEffect(() => {
+    if (docItemsPerPageValue === 'all') {
+      setDocItemsPerPage(Math.max(allDocs.length, 1));
+    }
+  }, [allDocs.length, docItemsPerPageValue]);
+
   if (loading) return <div className="p-10 text-center text-xs text-slate-400 uppercase font-black tracking-widest animate-pulse">Checking checklist...</div>;
 
-  const extraUploads = data.uploads.filter(u => !u.requirement_id);
-
   return (
-    <div className="p-6 pt-0">
+    <div className="p-6 pt-0 space-y-4">
+      {/* Pagination Info & Page Size Selector */}
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between px-2">
+        <div className="flex items-center gap-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          <span>Show</span>
+          <select
+            className="border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 outline-none hover:border-blue-400 focus:border-blue-500 transition-colors cursor-pointer shadow-sm"
+            value={docItemsPerPageValue}
+            onChange={(e) => {
+              const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
+              setDocItemsPerPageValue(val);
+              if (val !== 'all') setDocItemsPerPage(val);
+              setDocPage(1);
+            }}
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value="all">All</option>
+          </select>
+          <span>Entries</span>
+          <span className="text-slate-100 mx-1">|</span>
+          <span className="text-slate-500 font-bold">
+            Showing {allDocs.length === 0 ? 0 : docIndexOfFirst + 1} to {Math.min(docIndexOfLast, allDocs.length)} of {allDocs.length} Docs
+          </span>
+        </div>
+      </div>
+
       <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50 border-b border-slate-100">
-            <tr className="text-[10px] uppercase text-slate-500 font-black">
+            <tr className="text-[10px] uppercase text-slate-500 font-black tracking-widest">
               <th className="p-4">Document Details</th>
               <th className="p-4 text-center">Handed Over</th>
               <th className="p-4">Type</th>
               <th className="p-4 text-center">Status</th>
-              <th className="p-4">Actions</th>
+              <th className="p-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {data.requirements.map(req => {
-              const upload = data.uploads.find(u => u.requirement_id === req.id);
-              return (
-                <DocRow 
-                  key={req.id} 
-                  req={req} 
-                  upload={upload} 
-                  onUpload={handleUpload}
-                  onDelete={deleteDoc}
-                  onCheck={toggleChecklist}
-                  uploading={uploading === req.id}
-                  isAdminTier={isAdminTier}
-                />
-              );
-            })}
-
-            {extraUploads.map(u => (
+            {currentDocs.map(doc => (
               <DocRow 
-                key={u.id} 
-                req={{ document_name: u.document_name, is_mandatory: 0, level: 'Ad-hoc' }} 
-                upload={u} 
+                key={doc.id} 
+                req={doc.req} 
+                upload={doc.upload} 
                 onUpload={handleUpload}
                 onDelete={deleteDoc}
-                onCheck={() => {}} // No checklist for ad-hoc? Or handle same?
+                onCheck={doc.onCheck}
+                uploading={doc.uploading}
                 isAdminTier={isAdminTier}
+                onPreview={setPreviewFile}
               />
             ))}
           </tbody>
         </table>
 
-        {data.requirements.length === 0 && extraUploads.length === 0 && (
+        {allDocs.length === 0 && (
           <div className="text-center py-16 bg-white italic">
             <FileText className="mx-auto mb-3 text-slate-200" size={40} />
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">No Documents Found</p>
@@ -1372,6 +1569,31 @@ const DocumentManager = ({ leadId, isAdminTier }) => {
           </div>
         )}
       </div>
+
+      {/* Pagination Component */}
+      {allDocs.length > 0 && (
+        <div className="pt-2">
+          <Pagination
+            stats={{ currentPage: docPage, totalPages: docTotalPages }}
+            onPageChange={(newPage) => setDocPage(newPage)}
+            pageSize={docItemsPerPage}
+            pageSizeValue={docItemsPerPageValue}
+            onPageSizeChange={(val) => {
+              setDocItemsPerPageValue(val);
+              if (val !== 'all') setDocItemsPerPage(val);
+              setDocPage(1);
+            }}
+            pageSizeOptions={[5, 10, 20, 50, 'all']}
+          />
+        </div>
+      )}
+
+      {previewFile && (
+        <FilePreviewModal 
+          file={previewFile} 
+          onClose={() => setPreviewFile(null)} 
+        />
+      )}
     </div>
   );
 };
